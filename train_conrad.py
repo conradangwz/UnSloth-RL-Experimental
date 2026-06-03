@@ -61,6 +61,7 @@ from datetime import datetime
 
 from unsloth import FastModel
 import torch
+from datasets import load_dataset
 
 try:
     import transformers.utils.hub as transformers_hub
