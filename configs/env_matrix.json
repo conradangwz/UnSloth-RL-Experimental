@@ -1,0 +1,142 @@
+{
+  "codellama/CodeLlama-7b-Python-hf": {
+    "env_name": "unsloth_codelama",
+    "env_file": "envs/codellama-unsloth.yml",
+    "runner": "train_conrad.py",
+    "recommended_modes": [
+      "sanity_reward",
+      "eval_base",
+      "eval_base_holdout",
+      "train",
+      "eval_lora",
+      "eval_lora_holdout",
+      "tiny_overfit_train",
+      "eval_lora_tiny",
+      "eval_all"
+    ],
+    "supports_unsloth": true,
+    "supports_grpo": true,
+    "supports_lora_training": true,
+    "default_model_name": "codellama/CodeLlama-7b-Python-hf",
+    "recommended_launch": {
+      "single_gpu": "CUDA_VISIBLE_DEVICES=0 python train_conrad.py",
+      "dual_gpu_experimental": "CUDA_VISIBLE_DEVICES=0,1 accelerate launch --num_processes 2 train_conrad.py"
+    },
+    "recommended_env_vars": {
+      "LOAD_IN_4BIT": "true",
+      "LOAD_IN_16BIT": "false",
+      "FAST_INFERENCE": "false",
+      "FULL_FINETUNING": "false",
+      "MAX_SEQ_LENGTH": "2048",
+      "MAX_PROMPT_LENGTH": "1024",
+      "MAX_COMPLETION_LENGTH": "384",
+      "NUM_GENERATIONS": "4",
+      "PER_DEVICE_TRAIN_BATCH_SIZE": "4",
+      "GRADIENT_ACCUMULATION_STEPS": "1",
+      "LEARNING_RATE": "5e-6",
+      "LORA_R": "16",
+      "LORA_ALPHA": "16"
+    },
+    "notes": [
+      "Stable environment for CodeLlama HumanEval GRPO experiments.",
+      "CodeLlama can use 4-bit loading to reduce memory usage.",
+      "If dual-GPU GRPO hits DistributedDataParallel/model.config issues, rerun using the single-GPU launch."
+    ]
+  },
+  "unsloth/Qwen3.5-9B": {
+    "env_name": "qwen35_unsloth",
+    "env_file": "envs/qwen35-unsloth.yml",
+    "runner": "train_conrad.py",
+    "recommended_modes": [
+      "sanity_reward",
+      "eval_base",
+      "eval_base_holdout",
+      "train",
+      "eval_lora",
+      "eval_lora_holdout",
+      "eval_all"
+    ],
+    "supports_unsloth": true,
+    "supports_grpo": true,
+    "supports_lora_training": true,
+    "default_model_name": "unsloth/Qwen3.5-9B",
+    "fallback_model_name": "unsloth/Qwen3.5-4B",
+    "recommended_launch": {
+      "single_gpu": "CUDA_VISIBLE_DEVICES=0 python train_conrad.py",
+      "dual_gpu_experimental": "CUDA_VISIBLE_DEVICES=0,1 accelerate launch --num_processes 2 train_conrad.py"
+    },
+    "recommended_env_vars": {
+      "LOAD_IN_4BIT": "false",
+      "LOAD_IN_16BIT": "true",
+      "FAST_INFERENCE": "false",
+      "FULL_FINETUNING": "false",
+      "MAX_SEQ_LENGTH": "2048",
+      "MAX_PROMPT_LENGTH": "1024",
+      "MAX_COMPLETION_LENGTH": "384",
+      "NUM_GENERATIONS": "4",
+      "PER_DEVICE_TRAIN_BATCH_SIZE": "1",
+      "GRADIENT_ACCUMULATION_STEPS": "4",
+      "LEARNING_RATE": "5e-6",
+      "LORA_R": "16",
+      "LORA_ALPHA": "16"
+    },
+    "hardware_notes": [
+      "Qwen3.5-9B is the strongest realistic Qwen3.5 target for dual RTX 3090 GPUs.",
+      "Unsloth lists Qwen3.5-9B bf16 LoRA at about 22GB VRAM.",
+      "Qwen3.5-27B is listed at about 56GB VRAM and Qwen3.5-35B-A3B is listed at about 74GB VRAM, so they are not suitable first targets for this setup.",
+      "Use Qwen3.5-4B as the fallback if 9B runs out of memory during GRPO."
+    ],
+    "required_model_loading_notes": [
+      "Use Transformers v5.",
+      "Use fast_inference=False for Qwen3.5 GRPO/RL.",
+      "Use LOAD_IN_4BIT=false because Qwen3.5 QLoRA/4-bit is not recommended by Unsloth.",
+      "Use LOAD_IN_16BIT=true for bf16/16-bit LoRA.",
+      "Start with per_device_train_batch_size=1 and gradient_accumulation_steps=4."
+    ],
+    "notes": [
+      "This environment is separate from CodeLlama because Qwen3.5 requires newer Transformers support.",
+      "Qwen3.5 supports text, vision, and RL fine-tuning through Unsloth.",
+      "The Qwen3.5 Vision GRPO notebook is multimodal, but this project can still use Qwen3.5 for text/code GRPO on HumanEval."
+    ]
+  },
+  "unsloth/Qwen3.5-4B": {
+    "env_name": "qwen35_unsloth",
+    "env_file": "envs/qwen35-unsloth.yml",
+    "runner": "train_conrad.py",
+    "recommended_modes": [
+      "sanity_reward",
+      "eval_base",
+      "eval_base_holdout",
+      "train",
+      "eval_lora",
+      "eval_lora_holdout",
+      "eval_all"
+    ],
+    "supports_unsloth": true,
+    "supports_grpo": true,
+    "supports_lora_training": true,
+    "default_model_name": "unsloth/Qwen3.5-4B",
+    "recommended_launch": {
+      "single_gpu": "CUDA_VISIBLE_DEVICES=0 python train_conrad.py"
+    },
+    "recommended_env_vars": {
+      "LOAD_IN_4BIT": "false",
+      "LOAD_IN_16BIT": "true",
+      "FAST_INFERENCE": "false",
+      "FULL_FINETUNING": "false",
+      "MAX_SEQ_LENGTH": "2048",
+      "MAX_PROMPT_LENGTH": "1024",
+      "MAX_COMPLETION_LENGTH": "384",
+      "NUM_GENERATIONS": "4",
+      "PER_DEVICE_TRAIN_BATCH_SIZE": "2",
+      "GRADIENT_ACCUMULATION_STEPS": "2",
+      "LEARNING_RATE": "5e-6",
+      "LORA_R": "16",
+      "LORA_ALPHA": "16"
+    },
+    "notes": [
+      "Fallback Qwen3.5 model if Qwen3.5-9B runs out of memory.",
+      "Unsloth lists Qwen3.5-4B bf16 LoRA at about 10GB VRAM."
+    ]
+  }
+}

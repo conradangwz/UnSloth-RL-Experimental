@@ -1,0 +1,42 @@
+name: unsloth_codelama
+
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+
+# Stable CodeLlama GRPO environment.
+# Create with:
+#   conda env create -f envs/codellama-unsloth.yml
+#   conda activate unsloth_codelama
+
+dependencies:
+  - python=3.11
+  - pip
+  - pytorch
+  - pytorch-cuda=12.1
+  - pip:
+      # Core Unsloth / GRPO stack
+      - unsloth
+      - unsloth_zoo
+      - transformers
+      - trl
+      - peft
+      - accelerate
+      - bitsandbytes
+
+      # Dataset/evaluation/logging
+      - datasets
+      - pandas
+      - numpy
+      - scipy
+      - scikit-learn
+
+      # Dashboard/reporting
+      - plotly
+
+      # Utilities
+      - tqdm
+      - sentencepiece
+      - protobuf
+      - safetensors

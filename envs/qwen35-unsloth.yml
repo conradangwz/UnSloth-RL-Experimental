@@ -1,0 +1,54 @@
+name: qwen35_unsloth
+
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+
+# Separate Qwen3.5 GRPO environment.
+# Qwen3.5 needs newer Unsloth/Transformers support than the stable CodeLlama env.
+# Create with:
+#   conda env create -f envs/qwen35-unsloth.yml
+#   conda activate qwen35_unsloth
+#
+# If Qwen3.5 still fails to load because Transformers is too old, run:
+#   pip install --upgrade --force-reinstall --no-cache-dir unsloth unsloth_zoo
+#   pip install --pre --upgrade "transformers>=5.0.0"
+
+dependencies:
+  - python=3.12
+  - pip
+  - pytorch
+  - pytorch-cuda=12.1
+  - pip:
+      # Qwen3.5-compatible Unsloth stack
+      - unsloth
+      - unsloth_zoo
+      - "transformers>=5.0.0"
+
+      # GRPO/RL stack
+      - trl
+      - peft
+      - accelerate
+      - bitsandbytes
+
+      # Dataset/evaluation/logging
+      - datasets
+      - pandas
+      - numpy
+      - scipy
+      - scikit-learn
+
+      # Dashboard/reporting
+      - plotly
+
+      # Utilities
+      - tqdm
+      - sentencepiece
+      - protobuf
+      - safetensors
+
+      # Qwen3.5 is a unified vision-language model family.
+      # Keep these available even if your current HumanEval task is text/code only.
+      - torchvision
+      - pillow
