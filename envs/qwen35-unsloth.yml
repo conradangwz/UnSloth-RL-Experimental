@@ -27,6 +27,8 @@ dependencies:
       - unsloth
       - unsloth_zoo
       - "transformers>=5.2.0,<=5.5.0"
+      # Do not install torchao in this env. Some Transformers 5.x builds will
+      # discover it automatically if present, and this repo does not need it.
 
       # GRPO / PEFT / distributed training.
       - trl
