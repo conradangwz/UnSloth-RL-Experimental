@@ -140,5 +140,104 @@
       "Current Qwen path for the dual RTX 3090 setup when Qwen3.5-9B is too large.",
       "Unsloth lists Qwen3.5-4B bf16 LoRA at about 10GB VRAM."
     ]
+  },
+  "unsloth/Qwen3.6-27B": {
+    "env_name": "qwen36_unsloth",
+    "env_file": "envs/qwen36-unsloth.yml",
+    "runner": "train_conrad.py",
+    "recommended_modes": [
+      "sanity_reward",
+      "eval_base",
+      "eval_base_holdout",
+      "train",
+      "eval_lora",
+      "eval_lora_holdout",
+      "eval_all"
+    ],
+    "supports_unsloth": true,
+    "supports_grpo": true,
+    "supports_lora_training": true,
+    "default_model_name": "unsloth/Qwen3.6-27B",
+    "fallback_model_name": "unsloth/Qwen3.6-35B-A3B",
+    "recommended_launch": {
+      "single_gpu": "python train_conrad.py",
+      "dual_gpu_experimental": "CUDA_VISIBLE_DEVICES=0,1 accelerate launch --num_processes 2 train_conrad.py"
+    },
+    "recommended_env_vars": {
+      "TEST_MODE": "train",
+      "MODEL_NAME": "unsloth/Qwen3.6-27B",
+      "LOAD_IN_4BIT": "true",
+      "LOAD_IN_16BIT": "false",
+      "LOAD_IN_8BIT": "false",
+      "FAST_INFERENCE": "false",
+      "USE_CHAT_TEMPLATE": "true",
+      "QWEN_ENABLE_THINKING": "false",
+      "NUM_GENERATIONS": "2",
+      "EVAL_NUM_GENERATIONS": "2",
+      "MAX_COMPLETION_LENGTH": "384"
+    },
+    "hardware_notes": [
+      "Default Qwen3.6 route for the dual RTX 3090 setup.",
+      "Uses 4-bit LoRA by default."
+    ],
+    "required_model_loading_notes": [
+      "Use FastModel, not FastLanguageModel.",
+      "Keep fast_inference=False for GRPO.",
+      "Use the model chat template and keep thinking disabled unless you intentionally want to test it.",
+      "If the default 384-token completion budget is too large, drop MAX_COMPLETION_LENGTH to 256 for a stability run."
+    ],
+    "notes": [
+      "This env bakes in the default Qwen3.6-27B HumanEval GRPO settings.",
+      "The env variables are set so `python train_conrad.py` works without extra model flags."
+    ]
+  },
+  "unsloth/Qwen3.6-35B-A3B": {
+    "env_name": "qwen36_moe_unsloth",
+    "env_file": "envs/qwen36-moe-unsloth.yml",
+    "runner": "train_conrad.py",
+    "recommended_modes": [
+      "sanity_reward",
+      "eval_base",
+      "eval_base_holdout",
+      "train",
+      "eval_lora",
+      "eval_lora_holdout",
+      "eval_all"
+    ],
+    "supports_unsloth": true,
+    "supports_grpo": true,
+    "supports_lora_training": true,
+    "default_model_name": "unsloth/Qwen3.6-35B-A3B",
+    "recommended_launch": {
+      "single_gpu": "python train_conrad.py",
+      "dual_gpu_experimental": "CUDA_VISIBLE_DEVICES=0,1 accelerate launch --num_processes 2 train_conrad.py"
+    },
+    "recommended_env_vars": {
+      "TEST_MODE": "train",
+      "MODEL_NAME": "unsloth/Qwen3.6-35B-A3B",
+      "LOAD_IN_4BIT": "false",
+      "LOAD_IN_16BIT": "true",
+      "LOAD_IN_8BIT": "false",
+      "FAST_INFERENCE": "false",
+      "USE_CHAT_TEMPLATE": "true",
+      "QWEN_ENABLE_THINKING": "false",
+      "NUM_GENERATIONS": "2",
+      "EVAL_NUM_GENERATIONS": "2",
+      "MAX_COMPLETION_LENGTH": "384"
+    },
+    "hardware_notes": [
+      "Larger MoE option for machines with substantially more VRAM than a single RTX 3090.",
+      "Only use this when the 27B model is too small and you have enough memory headroom."
+    ],
+    "required_model_loading_notes": [
+      "Use FastModel, not FastLanguageModel.",
+      "Keep fast_inference=False for GRPO.",
+      "Use the model chat template and keep thinking disabled unless you intentionally want to test it.",
+      "If memory is tight, reduce MAX_COMPLETION_LENGTH to 256."
+    ],
+    "notes": [
+      "This env is the larger Qwen3.6 MoE option.",
+      "It keeps the same project stack as the default Qwen3.6 env and only changes the model/runtime defaults."
+    ]
   }
 }

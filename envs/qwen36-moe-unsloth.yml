@@ -1,0 +1,61 @@
+name: qwen36_moe_unsloth
+
+channels:
+  - conda-forge
+
+# Qwen3.6 GRPO environment for the larger MoE option.
+# Create from scratch with:
+#   conda env remove -n qwen36_moe_unsloth -y
+#   conda env create -f envs/qwen36-moe-unsloth.yml
+#   conda activate qwen36_moe_unsloth
+#
+# This variant bakes in the 35B-A3B model defaults. Use it only on a machine
+# with substantially more VRAM than a single RTX 3090.
+variables:
+  TEST_MODE: train
+  MODEL_NAME: unsloth/Qwen3.6-35B-A3B
+  LOAD_IN_4BIT: "0"
+  LOAD_IN_16BIT: "1"
+  LOAD_IN_8BIT: "0"
+  FAST_INFERENCE: "false"
+  USE_CHAT_TEMPLATE: "1"
+  QWEN_ENABLE_THINKING: "0"
+  NUM_GENERATIONS: "2"
+  EVAL_NUM_GENERATIONS: "2"
+  MAX_COMPLETION_LENGTH: "384"
+
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      # CUDA-enabled PyTorch stack for the dual RTX 3090 machine.
+      - --extra-index-url https://download.pytorch.org/whl/cu121
+      - torch==2.5.1+cu121
+      - torchvision==0.20.1+cu121
+      - torchaudio==2.5.1+cu121
+
+      # Qwen3.6-compatible Unsloth stack.
+      - unsloth
+      - unsloth_zoo
+      - "transformers>=5.2.0,<=5.5.0"
+
+      # GRPO / PEFT / distributed training.
+      - trl
+      - peft
+      - accelerate
+      - bitsandbytes
+
+      # Dataset / logging / dashboard generation.
+      - datasets
+      - pandas
+      - plotly
+
+      # Utility / serialization dependencies used by the training and dashboard scripts.
+      - numpy
+      - scipy
+      - scikit-learn
+      - tqdm
+      - sentencepiece
+      - protobuf
+      - safetensors
+      - pillow

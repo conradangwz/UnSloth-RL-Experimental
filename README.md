@@ -4,12 +4,13 @@ This repository contains a GRPO-based coding RL workflow built around `train_con
 
 The project trains and evaluates code models on HumanEval using [Unsloth](https://github.com/unslothai/unsloth), [TRL](https://github.com/huggingface/trl), PEFT LoRA fine-tuning, and a reward function that checks formatting, compilation, runtime success, and unit tests.
 
-The repo currently supports two model families:
+The repo currently supports three model families:
 
 - CodeLlama
 - Qwen3.5
+- Qwen3.6
 
-The Qwen path is the one you should use for the dual RTX 3090 setup.
+The Qwen3.6 path is the current preferred Qwen route for the dual RTX 3090 setup.
 
 ## What This Project Does
 
@@ -120,10 +121,22 @@ For Qwen3.5:
 conda env create -f envs/qwen35-unsloth.yml
 ```
 
+For Qwen3.6 default 27B:
+
+```bash
+conda env create -f envs/qwen36-unsloth.yml
+```
+
+For Qwen3.6 35B-A3B MoE:
+
+```bash
+conda env create -f envs/qwen36-moe-unsloth.yml
+```
+
 ### 2. Activate the environment
 
 ```bash
-conda activate qwen35_unsloth
+conda activate qwen36_unsloth
 ```
 
 ### 3. Verify GPU visibility
@@ -157,13 +170,16 @@ nohup ./run_next_experiments.sh > experiment_queue_launcher.log 2>&1 &
 disown
 ```
 
-### Qwen-only queue
+### Qwen3.5 queue
 
 Run the staged Qwen workflow:
 
 ```bash
 ./run_next_experiments.sh qwen
 ```
+
+This is the legacy Qwen3.5 queue. For the current Qwen3.6 path, use the
+direct env-based runs in the section below.
 
 This runs:
 
@@ -172,6 +188,30 @@ This runs:
 - `E7` base holdout eval
 - `E8` dual-GPU training
 - `E9` LoRA holdout eval
+
+### Qwen3.6 direct runs
+
+The Qwen3.6 envs bake in the default model and GRPO settings, so `python train_conrad.py` works without extra model flags.
+
+Default 27B run:
+
+```bash
+conda activate qwen36_unsloth
+TEST_MODE=train python train_conrad.py
+```
+
+Larger MoE option:
+
+```bash
+conda activate qwen36_moe_unsloth
+TEST_MODE=train python train_conrad.py
+```
+
+If the default 27B run still runs out of memory, use the stability escape hatch:
+
+```bash
+MAX_COMPLETION_LENGTH=256 TEST_MODE=train python train_conrad.py
+```
 
 ### Individual jobs
 
@@ -190,6 +230,9 @@ Run a custom sequence:
 ### Direct training script usage
 
 You can also bypass the launcher and run `train_conrad.py` directly.
+
+The examples below are the older Qwen3.5 command-line patterns. For the
+current Qwen3.6 defaults, use the section above.
 
 Sanity check:
 
@@ -275,7 +318,7 @@ python train_conrad.py
 
 ## Job Order
 
-The current Qwen order is:
+The current Qwen3.5 order is:
 
 1. `E5` - sanity reward check
 2. `E6` - tiny overfit train, 50 steps
@@ -284,6 +327,12 @@ The current Qwen order is:
 5. `E9` - LoRA holdout eval with 8 generations
 
 This order makes sense because it checks the reward path first, then validates learning on a tiny slice, then checks base performance, then spends compute on full training, then evaluates the trained LoRA.
+
+For Qwen3.6, the recommended progression is:
+
+1. `TEST_MODE=train` with the default `qwen36_unsloth` env for `unsloth/Qwen3.6-27B`
+2. If that fits comfortably, try the larger `qwen36_moe_unsloth` env for `unsloth/Qwen3.6-35B-A3B`
+3. If memory is tight, drop `MAX_COMPLETION_LENGTH` to `256` for a stability pass
 
 ## Key Variables
 
@@ -342,6 +391,8 @@ The table below explains the main variables, what they do, and what they influen
 - Base and LoRA evals are kept separate from the training jobs.
 - The script writes dashboards after evals and training runs.
 - If PyTorch cannot see CUDA, `unsloth` will fail immediately during import.
+- The Qwen3.6 envs bake in the default model and GRPO settings so
+  `python train_conrad.py` works without extra model flags.
 - For Qwen3.5, the launcher now sets `UNSLOTH_COMPILE_DISABLE=1` to avoid
   Unsloth/Triton compiler crashes on this machine. That makes the env much
   simpler and removes the need for `flash-linear-attention` or `causal-conv1d`
