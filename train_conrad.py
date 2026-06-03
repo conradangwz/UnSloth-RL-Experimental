@@ -1214,5 +1214,7 @@ if TEST_MODE in {"train", "tiny_overfit_train"}:
         print(f"Saved LoRA to {LORA_OUTPUT_DIR}")
         print(f"Run root: {RUN_ROOT}")
 
+    sys.exit(0)
+
 
 raise ValueError(f"Unknown TEST_MODE: {TEST_MODE}")
