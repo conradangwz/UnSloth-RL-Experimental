@@ -43,8 +43,13 @@ import subprocess
 import sys
 import tempfile
 import random
+import os
 from datetime import datetime
 from pathlib import Path
+
+_PREIMPORT_MODEL_NAME = os.getenv("MODEL_NAME", "")
+if _PREIMPORT_MODEL_NAME.startswith("unsloth/Qwen3.5"):
+    os.environ.setdefault("UNSLOTH_COMPILE_DISABLE", "1")
 
 try:
     import resource
@@ -52,7 +57,6 @@ except ImportError:
     resource = None
 
 import sys
-import os
 import shutil
 import csv
 import json

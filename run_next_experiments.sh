@@ -172,6 +172,7 @@ job_e4() {
 job_e5() {
   log "E5: Qwen3.5 sanity reward check"
   run_in_conda_env "$QWEN_ENV" env \
+    UNSLOTH_COMPILE_DISABLE=1 \
     TEST_MODE=sanity_reward \
     MODEL_NAME="$QWEN_MODEL" \
     RUN_ROOT="$QWEN_SANITY_ROOT" \
@@ -184,6 +185,7 @@ job_e5() {
 job_e6() {
   log "E6: Qwen3.5 tiny overfit train (50 steps)"
   run_in_conda_env "$QWEN_ENV" env \
+    UNSLOTH_COMPILE_DISABLE=1 \
     CUDA_VISIBLE_DEVICES=0,1 \
     WORLD_SIZE=2 \
     TEST_MODE=tiny_overfit_train \
@@ -211,6 +213,7 @@ job_e6() {
 job_e7() {
   log "E7: Qwen3.5-4B base holdout eval"
   run_in_conda_env "$QWEN_ENV" env \
+    UNSLOTH_COMPILE_DISABLE=1 \
     CUDA_VISIBLE_DEVICES=0 \
     TEST_MODE=eval_base_holdout \
     MODEL_NAME="$QWEN_MODEL" \
@@ -229,6 +232,7 @@ job_e7() {
 job_e8() {
   log "E8: Qwen3.5-4B dual-GPU GRPO training"
   run_in_conda_env "$QWEN_ENV" env \
+    UNSLOTH_COMPILE_DISABLE=1 \
     CUDA_VISIBLE_DEVICES=0,1 \
     WORLD_SIZE=2 \
     TEST_MODE=train \
@@ -255,6 +259,7 @@ job_e8() {
 job_e9() {
   log "E9: Qwen3.5-4B trained LoRA holdout eval"
   run_in_conda_env "$QWEN_ENV" env \
+    UNSLOTH_COMPILE_DISABLE=1 \
     CUDA_VISIBLE_DEVICES=0 \
     TEST_MODE=eval_lora_holdout \
     MODEL_NAME="$QWEN_MODEL" \

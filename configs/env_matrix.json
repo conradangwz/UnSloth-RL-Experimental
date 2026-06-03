@@ -117,10 +117,11 @@
     "supports_lora_training": true,
     "default_model_name": "unsloth/Qwen3.5-4B",
     "recommended_launch": {
-      "single_gpu": "CUDA_VISIBLE_DEVICES=0 python train_conrad.py",
-      "dual_gpu_experimental": "CUDA_VISIBLE_DEVICES=0,1 accelerate launch --num_processes 2 train_conrad.py"
+      "single_gpu": "UNSLOTH_COMPILE_DISABLE=1 CUDA_VISIBLE_DEVICES=0 python train_conrad.py",
+      "dual_gpu_experimental": "UNSLOTH_COMPILE_DISABLE=1 CUDA_VISIBLE_DEVICES=0,1 accelerate launch --num_processes 2 train_conrad.py"
     },
     "recommended_env_vars": {
+      "UNSLOTH_COMPILE_DISABLE": "1",
       "LOAD_IN_4BIT": "false",
       "LOAD_IN_16BIT": "true",
       "FAST_INFERENCE": "false",

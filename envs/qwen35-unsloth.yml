@@ -27,11 +27,6 @@ dependencies:
       - unsloth
       - unsloth_zoo
       - "transformers>=5.2.0,<=5.5.0"
-      # Qwen3.5's linear-attention fast path needs these packages.
-      # flash-linear-attention can be installed during env creation.
-      # causal-conv1d is installed separately after env creation with
-      # `pip install --no-build-isolation` so it uses the env's Torch/CUDA.
-      - flash-linear-attention
       # Do not install torchao in this env. Some Transformers 5.x builds will
       # discover it automatically if present, and this repo does not need it.
 

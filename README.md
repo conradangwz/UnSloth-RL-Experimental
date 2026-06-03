@@ -120,14 +120,6 @@ For Qwen3.5:
 conda env create -f envs/qwen35-unsloth.yml
 ```
 
-Then, inside the new environment, install `causal-conv1d` without build
-isolation so it compiles against the environment's pinned Torch/CUDA build:
-
-```bash
-conda activate qwen35_unsloth
-python -m pip install --no-build-isolation causal-conv1d==1.6.2.post1
-```
-
 ### 2. Activate the environment
 
 ```bash
@@ -350,9 +342,10 @@ The table below explains the main variables, what they do, and what they influen
 - Base and LoRA evals are kept separate from the training jobs.
 - The script writes dashboards after evals and training runs.
 - If PyTorch cannot see CUDA, `unsloth` will fail immediately during import.
-- For Qwen3.5, keep `flash-linear-attention` and `causal-conv1d` installed so
-  Transformers can use the fast linear-attention path instead of the slower
-  pure-PyTorch fallback.
+- For Qwen3.5, the launcher now sets `UNSLOTH_COMPILE_DISABLE=1` to avoid
+  Unsloth/Triton compiler crashes on this machine. That makes the env much
+  simpler and removes the need for `flash-linear-attention` or `causal-conv1d`
+  in this workflow.
 
 ## Troubleshooting
 
