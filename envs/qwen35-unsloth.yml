@@ -24,6 +24,8 @@ dependencies:
       # Qwen3.5-compatible Unsloth stack
       - unsloth
       - unsloth_zoo
+      # Allow pre-release Transformers builds so the env can resolve the Qwen3.5 stack cleanly.
+      - --pre
       - "transformers>=5.0.0"
 
       # GRPO/RL stack

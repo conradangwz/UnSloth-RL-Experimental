@@ -27,6 +27,7 @@ log() {
 run_in_conda_env() {
   local env_name="$1"
   shift
+  local status=0
 
   log "Activating conda env: $env_name"
 
@@ -36,20 +37,25 @@ run_in_conda_env() {
 
   log "Python: $(which python)"
   log "Command: $*"
-  "$@"
+  "$@" || status=$?
 
   conda deactivate
+  return "$status"
 }
 
 make_dashboard() {
+  local env_name="$1"
+  shift
   local run_dir="$1"
   local output_html="$2"
 
   if [[ -f "$PROJECT_ROOT/plot_training_conrad_toggle.py" ]]; then
     log "Generating dashboard: $output_html"
-    python "$PROJECT_ROOT/plot_training_conrad_toggle.py" \
+    if ! run_in_conda_env "$env_name" python "$PROJECT_ROOT/plot_training_conrad_toggle.py" \
       --run-dir "$run_dir" \
-      --output "$output_html" || log "Dashboard failed for $run_dir; continuing."
+      --output "$output_html"; then
+      log "Dashboard failed for $run_dir; continuing."
+    fi
   else
     log "plot_training_conrad_toggle.py not found; skipping dashboard."
   fi
@@ -87,7 +93,7 @@ run_in_conda_env "$CODELLAMA_ENV" env \
   FAST_INFERENCE=false \
   EVAL_NUM_GENERATIONS=4 \
   python train_conrad.py
-make_dashboard "$CODELLAMA_BASE_HOLDOUT" "$DASHBOARD_ROOT/E1_codelama_base_holdout.html"
+make_dashboard "$CODELLAMA_ENV" "$CODELLAMA_BASE_HOLDOUT" "$DASHBOARD_ROOT/E1_codelama_base_holdout.html"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. CodeLlama single-GPU GRPO training
@@ -115,7 +121,7 @@ run_in_conda_env "$CODELLAMA_ENV" env \
   NUM_GENERATIONS=4 \
   LEARNING_RATE=5e-6 \
   python train_conrad.py
-make_dashboard "$CODELLAMA_TRAIN" "$DASHBOARD_ROOT/E3_codelama_single3090_grpo.html"
+make_dashboard "$CODELLAMA_ENV" "$CODELLAMA_TRAIN" "$DASHBOARD_ROOT/E3_codelama_single3090_grpo.html"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. CodeLlama trained LoRA holdout evaluation
@@ -132,7 +138,7 @@ run_in_conda_env "$CODELLAMA_ENV" env \
   FAST_INFERENCE=false \
   EVAL_NUM_GENERATIONS=4 \
   python train_conrad.py
-make_dashboard "$CODELLAMA_LORA_HOLDOUT" "$DASHBOARD_ROOT/E4_codelama_lora_holdout.html"
+make_dashboard "$CODELLAMA_ENV" "$CODELLAMA_LORA_HOLDOUT" "$DASHBOARD_ROOT/E4_codelama_lora_holdout.html"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Qwen3.5-9B base holdout evaluation
@@ -152,7 +158,7 @@ run_in_conda_env "$QWEN_ENV" env \
   NUM_GENERATIONS=4 \
   EVAL_NUM_GENERATIONS=4 \
   python train_conrad.py
-make_dashboard "$QWEN_BASE_HOLDOUT" "$DASHBOARD_ROOT/E5_qwen35_9b_base_holdout.html"
+make_dashboard "$QWEN_ENV" "$QWEN_BASE_HOLDOUT" "$DASHBOARD_ROOT/E5_qwen35_9b_base_holdout.html"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 6. Qwen3.5-9B single-GPU GRPO training
@@ -180,7 +186,7 @@ run_in_conda_env "$QWEN_ENV" env \
   NUM_GENERATIONS=4 \
   LEARNING_RATE=5e-6 \
   python train_conrad.py
-make_dashboard "$QWEN_TRAIN" "$DASHBOARD_ROOT/E6_qwen35_9b_single3090_grpo.html"
+make_dashboard "$QWEN_ENV" "$QWEN_TRAIN" "$DASHBOARD_ROOT/E6_qwen35_9b_single3090_grpo.html"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 7. Qwen3.5-9B trained LoRA holdout evaluation
@@ -198,7 +204,7 @@ run_in_conda_env "$QWEN_ENV" env \
   FAST_INFERENCE=false \
   EVAL_NUM_GENERATIONS=4 \
   python train_conrad.py
-make_dashboard "$QWEN_LORA_HOLDOUT" "$DASHBOARD_ROOT/E7_qwen35_9b_lora_holdout.html"
+make_dashboard "$QWEN_ENV" "$QWEN_LORA_HOLDOUT" "$DASHBOARD_ROOT/E7_qwen35_9b_lora_holdout.html"
 
 log "Experiment queue complete."
 log "Dashboards saved to: $DASHBOARD_ROOT"
