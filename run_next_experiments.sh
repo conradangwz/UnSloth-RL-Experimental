@@ -17,12 +17,13 @@ LOG_ROOT="$PROJECT_ROOT/results/worklogs"
 
 CODELLAMA_ENV="unsloth_codelama"
 QWEN_ENV="qwen35_unsloth"
+QWEN_MODEL="unsloth/Qwen3.5-4B"
 
 QWEN_SANITY_ROOT="$RUNS_ROOT/E5_qwen35_sanity_reward"
 QWEN_TINY_ROOT="$RUNS_ROOT/E6_qwen35_tiny_overfit_50"
-QWEN_BASE_HOLDOUT_ROOT="$RUNS_ROOT/E7_qwen35_9b_base_holdout_8gen"
-QWEN_TRAIN_ROOT="$RUNS_ROOT/E8_qwen35_9b_single3090_grpo"
-QWEN_LORA_HOLDOUT_ROOT="$RUNS_ROOT/E9_qwen35_9b_lora_holdout_8gen"
+QWEN_BASE_HOLDOUT_ROOT="$RUNS_ROOT/E7_qwen35_4b_base_holdout_8gen"
+QWEN_TRAIN_ROOT="$RUNS_ROOT/E8_qwen35_4b_dual3090_grpo"
+QWEN_LORA_HOLDOUT_ROOT="$RUNS_ROOT/E9_qwen35_4b_lora_holdout_8gen"
 
 mkdir -p "$RUNS_ROOT" "$DASHBOARD_ROOT" "$LOG_ROOT"
 cd "$PROJECT_ROOT"
@@ -80,9 +81,9 @@ Jobs:
   E4  CodeLlama trained LoRA holdout evaluation
   E5  Qwen3.5 sanity reward check
   E6  Qwen3.5 tiny overfit train (50 steps)
-  E7  Qwen3.5-9B base holdout evaluation
-  E8  Qwen3.5-9B dual-GPU GRPO training
-  E9  Qwen3.5-9B trained LoRA holdout evaluation
+  E7  Qwen3.5-4B base holdout evaluation
+  E8  Qwen3.5-4B dual-GPU GRPO training
+  E9  Qwen3.5-4B trained LoRA holdout evaluation
 
 Groups:
   all    Run the full queue in order
@@ -172,7 +173,7 @@ job_e5() {
   log "E5: Qwen3.5 sanity reward check"
   run_in_conda_env "$QWEN_ENV" env \
     TEST_MODE=sanity_reward \
-    MODEL_NAME=unsloth/Qwen3.5-9B \
+    MODEL_NAME="$QWEN_MODEL" \
     RUN_ROOT="$QWEN_SANITY_ROOT" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
@@ -187,7 +188,7 @@ job_e6() {
     WORLD_SIZE=2 \
     TEST_MODE=tiny_overfit_train \
     TINY_MAX_STEPS=50 \
-    MODEL_NAME=unsloth/Qwen3.5-9B \
+    MODEL_NAME="$QWEN_MODEL" \
     RUN_ROOT="$QWEN_TINY_ROOT" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
@@ -208,11 +209,11 @@ job_e6() {
 }
 
 job_e7() {
-  log "E7: Qwen3.5-9B base holdout eval"
+  log "E7: Qwen3.5-4B base holdout eval"
   run_in_conda_env "$QWEN_ENV" env \
     CUDA_VISIBLE_DEVICES=0 \
     TEST_MODE=eval_base_holdout \
-    MODEL_NAME=unsloth/Qwen3.5-9B \
+    MODEL_NAME="$QWEN_MODEL" \
     RUN_ROOT="$QWEN_BASE_HOLDOUT_ROOT" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
@@ -222,16 +223,16 @@ job_e7() {
     NUM_GENERATIONS=4 \
     EVAL_NUM_GENERATIONS=8 \
     python train_conrad.py
-  make_dashboard "$QWEN_ENV" "$QWEN_BASE_HOLDOUT_ROOT" "$DASHBOARD_ROOT/E7_qwen35_9b_base_holdout_8gen.html"
+  make_dashboard "$QWEN_ENV" "$QWEN_BASE_HOLDOUT_ROOT" "$DASHBOARD_ROOT/E7_qwen35_4b_base_holdout_8gen.html"
 }
 
 job_e8() {
-  log "E8: Qwen3.5-9B dual-GPU GRPO training"
+  log "E8: Qwen3.5-4B dual-GPU GRPO training"
   run_in_conda_env "$QWEN_ENV" env \
     CUDA_VISIBLE_DEVICES=0,1 \
     WORLD_SIZE=2 \
     TEST_MODE=train \
-    MODEL_NAME=unsloth/Qwen3.5-9B \
+    MODEL_NAME="$QWEN_MODEL" \
     RUN_ROOT="$QWEN_TRAIN_ROOT" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
@@ -248,15 +249,15 @@ job_e8() {
     NUM_GENERATIONS=4 \
     LEARNING_RATE=5e-6 \
     accelerate launch --num_processes 2 train_conrad.py
-  make_dashboard "$QWEN_ENV" "$QWEN_TRAIN_ROOT" "$DASHBOARD_ROOT/E8_qwen35_9b_single3090_grpo.html"
+  make_dashboard "$QWEN_ENV" "$QWEN_TRAIN_ROOT" "$DASHBOARD_ROOT/E8_qwen35_4b_dual3090_grpo.html"
 }
 
 job_e9() {
-  log "E9: Qwen3.5-9B trained LoRA holdout eval"
+  log "E9: Qwen3.5-4B trained LoRA holdout eval"
   run_in_conda_env "$QWEN_ENV" env \
     CUDA_VISIBLE_DEVICES=0 \
     TEST_MODE=eval_lora_holdout \
-    MODEL_NAME=unsloth/Qwen3.5-9B \
+    MODEL_NAME="$QWEN_MODEL" \
     RUN_ROOT="$QWEN_LORA_HOLDOUT_ROOT" \
     LORA_PATH="$QWEN_TRAIN_ROOT/lora" \
     LOAD_IN_4BIT=false \
@@ -264,7 +265,7 @@ job_e9() {
     FAST_INFERENCE=false \
     EVAL_NUM_GENERATIONS=8 \
     python train_conrad.py
-  make_dashboard "$QWEN_ENV" "$QWEN_LORA_HOLDOUT_ROOT" "$DASHBOARD_ROOT/E9_qwen35_9b_lora_holdout_8gen.html"
+  make_dashboard "$QWEN_ENV" "$QWEN_LORA_HOLDOUT_ROOT" "$DASHBOARD_ROOT/E9_qwen35_4b_lora_holdout_8gen.html"
 }
 
 main() {

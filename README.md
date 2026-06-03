@@ -195,7 +195,7 @@ Sanity check:
 
 ```bash
 TEST_MODE=sanity_reward \
-MODEL_NAME=unsloth/Qwen3.5-9B \
+MODEL_NAME=unsloth/Qwen3.5-4B \
 RUN_ROOT=/home/cang688/Unsloth-RL-2/grpo_runs/qwen_sanity_reward \
 python train_conrad.py
 ```
@@ -207,7 +207,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 WORLD_SIZE=2 \
 TEST_MODE=tiny_overfit_train \
 TINY_MAX_STEPS=50 \
-MODEL_NAME=unsloth/Qwen3.5-9B \
+MODEL_NAME=unsloth/Qwen3.5-4B \
 RUN_ROOT=/home/cang688/Unsloth-RL-2/grpo_runs/qwen_tiny_overfit_50 \
 LOAD_IN_4BIT=false \
 LOAD_IN_16BIT=true \
@@ -221,7 +221,7 @@ Base holdout eval:
 CUDA_VISIBLE_DEVICES=0 \
 TEST_MODE=eval_base_holdout \
 EVAL_NUM_GENERATIONS=8 \
-MODEL_NAME=unsloth/Qwen3.5-9B \
+MODEL_NAME=unsloth/Qwen3.5-4B \
 LOAD_IN_4BIT=false \
 LOAD_IN_16BIT=true \
 FAST_INFERENCE=false \
@@ -235,8 +235,8 @@ LoRA holdout eval:
 CUDA_VISIBLE_DEVICES=0 \
 TEST_MODE=eval_lora_holdout \
 EVAL_NUM_GENERATIONS=8 \
-MODEL_NAME=unsloth/Qwen3.5-9B \
-LORA_PATH=/home/cang688/Unsloth-RL-2/grpo_runs/E8_qwen35_9b_single3090_grpo/lora \
+MODEL_NAME=unsloth/Qwen3.5-4B \
+LORA_PATH=/home/cang688/Unsloth-RL-2/grpo_runs/E8_qwen35_4b_dual3090_grpo/lora \
 LOAD_IN_4BIT=false \
 LOAD_IN_16BIT=true \
 FAST_INFERENCE=false \
@@ -280,7 +280,7 @@ The current Qwen order is:
 1. `E5` - sanity reward check
 2. `E6` - tiny overfit train, 50 steps
 3. `E7` - base holdout eval with 8 generations
-4. `E8` - dual-GPU Qwen3.5-9B training
+4. `E8` - dual-GPU Qwen3.5-4B training
 5. `E9` - LoRA holdout eval with 8 generations
 
 This order makes sense because it checks the reward path first, then validates learning on a tiny slice, then checks base performance, then spends compute on full training, then evaluates the trained LoRA.

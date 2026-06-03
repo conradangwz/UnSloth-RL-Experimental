@@ -117,7 +117,8 @@
     "supports_lora_training": true,
     "default_model_name": "unsloth/Qwen3.5-4B",
     "recommended_launch": {
-      "single_gpu": "CUDA_VISIBLE_DEVICES=0 python train_conrad.py"
+      "single_gpu": "CUDA_VISIBLE_DEVICES=0 python train_conrad.py",
+      "dual_gpu_experimental": "CUDA_VISIBLE_DEVICES=0,1 accelerate launch --num_processes 2 train_conrad.py"
     },
     "recommended_env_vars": {
       "LOAD_IN_4BIT": "false",
@@ -128,14 +129,14 @@
       "MAX_PROMPT_LENGTH": "1024",
       "MAX_COMPLETION_LENGTH": "384",
       "NUM_GENERATIONS": "4",
-      "PER_DEVICE_TRAIN_BATCH_SIZE": "2",
-      "GRADIENT_ACCUMULATION_STEPS": "2",
+      "PER_DEVICE_TRAIN_BATCH_SIZE": "1",
+      "GRADIENT_ACCUMULATION_STEPS": "4",
       "LEARNING_RATE": "5e-6",
       "LORA_R": "16",
       "LORA_ALPHA": "16"
     },
     "notes": [
-      "Fallback Qwen3.5 model if Qwen3.5-9B runs out of memory.",
+      "Current Qwen path for the dual RTX 3090 setup when Qwen3.5-9B is too large.",
       "Unsloth lists Qwen3.5-4B bf16 LoRA at about 10GB VRAM."
     ]
   }
