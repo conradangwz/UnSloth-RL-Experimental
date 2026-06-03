@@ -42,6 +42,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import random
 from datetime import datetime
 from pathlib import Path
 
@@ -59,6 +60,7 @@ import tempfile
 from datetime import datetime
 
 from unsloth import FastModel
+import torch
 
 try:
     import transformers.utils.hub as transformers_hub
