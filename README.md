@@ -120,6 +120,14 @@ For Qwen3.5:
 conda env create -f envs/qwen35-unsloth.yml
 ```
 
+Then, inside the new environment, install `causal-conv1d` without build
+isolation so it compiles against the environment's pinned Torch/CUDA build:
+
+```bash
+conda activate qwen35_unsloth
+python -m pip install --no-build-isolation causal-conv1d==1.6.2.post1
+```
+
 ### 2. Activate the environment
 
 ```bash
