@@ -7,7 +7,7 @@ set -euo pipefail
 # Examples:
 #   ./run_next_experiments.sh
 #   ./run_next_experiments.sh E6
-#   ./run_next_experiments.sh E5 E6 E7
+#   ./run_next_experiments.sh E5 E6 E7 E8 E9
 #   ./run_next_experiments.sh qwen
 
 PROJECT_ROOT="/home/cang688/Unsloth-RL-2"
@@ -17,6 +17,12 @@ LOG_ROOT="$PROJECT_ROOT/results/worklogs"
 
 CODELLAMA_ENV="unsloth_codelama"
 QWEN_ENV="qwen35_unsloth"
+
+QWEN_SANITY_ROOT="$RUNS_ROOT/E5_qwen35_sanity_reward"
+QWEN_TINY_ROOT="$RUNS_ROOT/E6_qwen35_tiny_overfit_50"
+QWEN_BASE_HOLDOUT_ROOT="$RUNS_ROOT/E7_qwen35_9b_base_holdout_8gen"
+QWEN_TRAIN_ROOT="$RUNS_ROOT/E8_qwen35_9b_single3090_grpo"
+QWEN_LORA_HOLDOUT_ROOT="$RUNS_ROOT/E9_qwen35_9b_lora_holdout_8gen"
 
 mkdir -p "$RUNS_ROOT" "$DASHBOARD_ROOT" "$LOG_ROOT"
 cd "$PROJECT_ROOT"
@@ -72,19 +78,21 @@ Jobs:
   E1  CodeLlama base holdout evaluation
   E3  CodeLlama dual-GPU GRPO training
   E4  CodeLlama trained LoRA holdout evaluation
-  E5  Qwen3.5-9B base holdout evaluation
-  E6  Qwen3.5-9B dual-GPU GRPO training
-  E7  Qwen3.5-9B trained LoRA holdout evaluation
+  E5  Qwen3.5 sanity reward check
+  E6  Qwen3.5 tiny overfit train (50 steps)
+  E7  Qwen3.5-9B base holdout evaluation
+  E8  Qwen3.5-9B dual-GPU GRPO training
+  E9  Qwen3.5-9B trained LoRA holdout evaluation
 
 Groups:
   all    Run the full queue in order
   code   Run E0, E1, E3, E4
-  qwen   Run E5, E6, E7
+  qwen   Run E5, E6, E7, E8, E9
 
 Examples:
   ./run_next_experiments.sh
   ./run_next_experiments.sh E6
-  ./run_next_experiments.sh E5 E6 E7
+  ./run_next_experiments.sh E5 E6 E7 E8 E9
   ./run_next_experiments.sh qwen
 EOF
 }
@@ -161,33 +169,70 @@ job_e4() {
 }
 
 job_e5() {
-  local qwen_base_holdout="$RUNS_ROOT/E5_qwen35_9b_base_holdout"
-  log "E5: Qwen3.5-9B base holdout eval"
+  log "E5: Qwen3.5 sanity reward check"
+  run_in_conda_env "$QWEN_ENV" env \
+    TEST_MODE=sanity_reward \
+    MODEL_NAME=unsloth/Qwen3.5-9B \
+    RUN_ROOT="$QWEN_SANITY_ROOT" \
+    LOAD_IN_4BIT=false \
+    LOAD_IN_16BIT=true \
+    FAST_INFERENCE=false \
+    python train_conrad.py
+}
+
+job_e6() {
+  log "E6: Qwen3.5 tiny overfit train (50 steps)"
+  run_in_conda_env "$QWEN_ENV" env \
+    CUDA_VISIBLE_DEVICES=0,1 \
+    WORLD_SIZE=2 \
+    TEST_MODE=tiny_overfit_train \
+    TINY_MAX_STEPS=50 \
+    MODEL_NAME=unsloth/Qwen3.5-9B \
+    RUN_ROOT="$QWEN_TINY_ROOT" \
+    LOAD_IN_4BIT=false \
+    LOAD_IN_16BIT=true \
+    FAST_INFERENCE=false \
+    CLEAN_OUTPUT_DIRS=true \
+    MAX_STEPS=50 \
+    SAVE_STEPS=25 \
+    LOGGING_STEPS=1 \
+    MAX_SEQ_LENGTH=2048 \
+    MAX_PROMPT_LENGTH=1024 \
+    MAX_COMPLETION_LENGTH=384 \
+    PER_DEVICE_TRAIN_BATCH_SIZE=1 \
+    GRADIENT_ACCUMULATION_STEPS=4 \
+    NUM_GENERATIONS=4 \
+    LEARNING_RATE=5e-6 \
+    accelerate launch --num_processes 2 train_conrad.py
+  make_dashboard "$QWEN_ENV" "$QWEN_TINY_ROOT" "$DASHBOARD_ROOT/E6_qwen35_tiny_overfit_50.html"
+}
+
+job_e7() {
+  log "E7: Qwen3.5-9B base holdout eval"
   run_in_conda_env "$QWEN_ENV" env \
     CUDA_VISIBLE_DEVICES=0 \
     TEST_MODE=eval_base_holdout \
     MODEL_NAME=unsloth/Qwen3.5-9B \
-    RUN_ROOT="$qwen_base_holdout" \
+    RUN_ROOT="$QWEN_BASE_HOLDOUT_ROOT" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
     FAST_INFERENCE=false \
     PER_DEVICE_TRAIN_BATCH_SIZE=1 \
     GRADIENT_ACCUMULATION_STEPS=4 \
     NUM_GENERATIONS=4 \
-    EVAL_NUM_GENERATIONS=4 \
+    EVAL_NUM_GENERATIONS=8 \
     python train_conrad.py
-  make_dashboard "$QWEN_ENV" "$qwen_base_holdout" "$DASHBOARD_ROOT/E5_qwen35_9b_base_holdout.html"
+  make_dashboard "$QWEN_ENV" "$QWEN_BASE_HOLDOUT_ROOT" "$DASHBOARD_ROOT/E7_qwen35_9b_base_holdout_8gen.html"
 }
 
-job_e6() {
-  local qwen_train="$RUNS_ROOT/E6_qwen35_9b_single3090_grpo"
-  log "E6: Qwen3.5-9B dual-GPU GRPO training"
+job_e8() {
+  log "E8: Qwen3.5-9B dual-GPU GRPO training"
   run_in_conda_env "$QWEN_ENV" env \
     CUDA_VISIBLE_DEVICES=0,1 \
     WORLD_SIZE=2 \
     TEST_MODE=train \
     MODEL_NAME=unsloth/Qwen3.5-9B \
-    RUN_ROOT="$qwen_train" \
+    RUN_ROOT="$QWEN_TRAIN_ROOT" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
     FAST_INFERENCE=false \
@@ -203,24 +248,23 @@ job_e6() {
     NUM_GENERATIONS=4 \
     LEARNING_RATE=5e-6 \
     accelerate launch --num_processes 2 train_conrad.py
-  make_dashboard "$QWEN_ENV" "$qwen_train" "$DASHBOARD_ROOT/E6_qwen35_9b_single3090_grpo.html"
+  make_dashboard "$QWEN_ENV" "$QWEN_TRAIN_ROOT" "$DASHBOARD_ROOT/E8_qwen35_9b_single3090_grpo.html"
 }
 
-job_e7() {
-  local qwen_lora_holdout="$RUNS_ROOT/E7_qwen35_9b_lora_holdout"
-  log "E7: Qwen3.5-9B trained LoRA holdout eval"
+job_e9() {
+  log "E9: Qwen3.5-9B trained LoRA holdout eval"
   run_in_conda_env "$QWEN_ENV" env \
     CUDA_VISIBLE_DEVICES=0 \
     TEST_MODE=eval_lora_holdout \
     MODEL_NAME=unsloth/Qwen3.5-9B \
-    RUN_ROOT="$qwen_lora_holdout" \
-    LORA_PATH="$QWEN_TRAIN/lora" \
+    RUN_ROOT="$QWEN_LORA_HOLDOUT_ROOT" \
+    LORA_PATH="$QWEN_TRAIN_ROOT/lora" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
     FAST_INFERENCE=false \
-    EVAL_NUM_GENERATIONS=4 \
+    EVAL_NUM_GENERATIONS=8 \
     python train_conrad.py
-  make_dashboard "$QWEN_ENV" "$qwen_lora_holdout" "$DASHBOARD_ROOT/E7_qwen35_9b_lora_holdout.html"
+  make_dashboard "$QWEN_ENV" "$QWEN_LORA_HOLDOUT_ROOT" "$DASHBOARD_ROOT/E9_qwen35_9b_lora_holdout_8gen.html"
 }
 
 main() {
@@ -242,19 +286,19 @@ main() {
         return 0
         ;;
       LIST|--LIST)
-        printf '%s\n' E0 E1 E3 E4 E5 E6 E7
+        printf '%s\n' E0 E1 E3 E4 E5 E6 E7 E8 E9
         return 0
         ;;
       ALL)
-        expanded_jobs+=(E0 E1 E3 E4 E5 E6 E7)
+        expanded_jobs+=(E0 E1 E3 E4 E5 E6 E7 E8 E9)
         ;;
       CODE|CODELLAMA|CODELAMA)
         expanded_jobs+=(E0 E1 E3 E4)
         ;;
       QWEN|QWEN35)
-        expanded_jobs+=(E5 E6 E7)
+        expanded_jobs+=(E5 E6 E7 E8 E9)
         ;;
-      E0|E1|E3|E4|E5|E6|E7)
+      E0|E1|E3|E4|E5|E6|E7|E8|E9)
         expanded_jobs+=("$normalized")
         ;;
       *)
@@ -274,6 +318,8 @@ main() {
       E5) job_e5 ;;
       E6) job_e6 ;;
       E7) job_e7 ;;
+      E8) job_e8 ;;
+      E9) job_e9 ;;
     esac
   done
 
