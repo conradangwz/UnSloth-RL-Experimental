@@ -154,6 +154,22 @@ OUTPUT_DIR = Path(env_str("OUTPUT_DIR", str(RUN_ROOT / "output")))
 LORA_OUTPUT_DIR = Path(env_str("LORA_OUTPUT_DIR", str(RUN_ROOT / "lora")))
 LORA_PATH = Path(env_str("LORA_PATH", str(LORA_OUTPUT_DIR)))
 
+# Qwen3.5's hybrid attention path can trigger TorchDynamo recompilation churn
+# when the fast linear-attention libraries are absent or when sequence shapes
+# vary a lot during GRPO generation. Keep compilation from hard-failing so the
+# run can continue in eager mode if needed.
+if MODEL_NAME.startswith("unsloth/Qwen3.5"):
+    try:
+        import torch._dynamo as torch_dynamo
+
+        torch_dynamo.config.suppress_errors = True
+        torch_dynamo.config.cache_size_limit = env_int("TORCHDYNAMO_CACHE_SIZE_LIMIT", 512)
+        torch_dynamo.config.accumulated_cache_size_limit = env_int(
+            "TORCHDYNAMO_ACCUMULATED_CACHE_SIZE_LIMIT", 2048
+        )
+    except Exception:
+        pass
+
 CLEAN_OUTPUT_DIRS = env_bool("CLEAN_OUTPUT_DIRS", False)
 
 SEED = env_int("SEED", 3407)

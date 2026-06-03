@@ -342,6 +342,9 @@ The table below explains the main variables, what they do, and what they influen
 - Base and LoRA evals are kept separate from the training jobs.
 - The script writes dashboards after evals and training runs.
 - If PyTorch cannot see CUDA, `unsloth` will fail immediately during import.
+- For Qwen3.5, keep `flash-linear-attention` and `causal-conv1d` installed so
+  Transformers can use the fast linear-attention path instead of the slower
+  pure-PyTorch fallback.
 
 ## Troubleshooting
 
