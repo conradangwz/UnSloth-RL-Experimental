@@ -125,6 +125,7 @@ isolation so it compiles against the environment's pinned Torch/CUDA build:
 
 ```bash
 conda activate qwen35_unsloth
+python -m pip install --force-reinstall "torchao==0.16.0"
 python -m pip install --no-build-isolation causal-conv1d==1.6.2.post1
 ```
 

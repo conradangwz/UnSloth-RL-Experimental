@@ -26,6 +26,9 @@ dependencies:
       # Qwen3.5-compatible Unsloth stack.
       - unsloth
       - unsloth_zoo
+      # torchao 0.17+ expects torch.int1 and breaks on the pinned Torch 2.5.1
+      # build used by this environment. Keep torchao on the 0.16 line.
+      - torchao==0.16.0
       - "transformers>=5.2.0,<=5.5.0"
       # Qwen3.5's linear-attention fast path needs these packages.
       # flash-linear-attention can be installed during env creation.
