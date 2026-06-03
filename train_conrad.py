@@ -170,6 +170,8 @@ GRADIENT_ACCUMULATION_STEPS = int(os.getenv("GRADIENT_ACCUMULATION_STEPS", "1"))
 
 MAX_STEPS = int(os.getenv("MAX_STEPS", "500"))
 TINY_MAX_STEPS = int(os.getenv("TINY_MAX_STEPS", "200"))
+SAVE_STEPS = int(os.getenv("SAVE_STEPS", "50"))
+LOGGING_STEPS = int(os.getenv("LOGGING_STEPS", "1"))
 
 MAX_PROMPT_LENGTH = int(os.getenv("MAX_PROMPT_LENGTH", "1024"))
 MAX_COMPLETION_LENGTH = int(os.getenv("MAX_COMPLETION_LENGTH", "384"))
@@ -835,7 +837,7 @@ def make_training_args(mode: str) -> GRPOConfig:
     max_steps = TINY_MAX_STEPS if mode == "tiny_overfit_train" else MAX_STEPS
 
     return GRPOConfig(
-        output_dir=output_dir,
+        output_dir=str(OUTPUT_DIR),
         per_device_train_batch_size=PER_DEVICE_TRAIN_BATCH_SIZE,
         gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
         max_steps=max_steps,
