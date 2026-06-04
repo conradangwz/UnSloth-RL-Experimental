@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+experiment_queue_launcher.log
+nohup.out
+
+# Project run artifacts
+grpo_runs/
+grpo_mvp_logs/
+grpo_mvp_output/
+grpo_mvp_lora/
+results/
+
+# Hugging Face / training artifacts that should not be committed accidentally
+checkpoint-*/
+**/checkpoint-*/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+unsloth_compiled_cache/
+
+
+# Tracker outputs
+wandb/
+runs/
+mlruns/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
