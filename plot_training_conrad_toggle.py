@@ -31,7 +31,7 @@ TOKEN_COLUMNS = [
 
 
 IMPORTANT_METRIC_DESCRIPTIONS = [
-    ("reward_total / trainer reward", "Overall reward signal. In this setup the maximum is normally 6.0: 0.2 format, 0.8 compile/runtime, and 5.0 tests, minus any extra-text penalty."),
+    ("reward_total / trainer reward", "Overall reward signal calculated from the active reward profile. Inspect reward_profile and reward_weights in the training summary before comparing runs."),
     ("reward_format", "Small reward for following the requested output format, especially ending with </code>."),
     ("reward_compile", "Reward for code that can be extracted, parsed, compiled, and run without immediate failure."),
     ("reward_tests", "Main quality reward. This is awarded when the generated solution passes HumanEval tests."),
@@ -44,7 +44,8 @@ IMPORTANT_METRIC_DESCRIPTIONS = [
     ("compile_ok_rate", "Share of completions that compile successfully."),
     ("runtime_ok_rate", "Share of completions that run without crashing."),
     ("test_pass_rate", "Share of completions that pass tests. This is the most important training outcome metric."),
-    ("score_6_rate", "Share of completions receiving perfect reward. This should roughly match test_pass_rate."),
+    ("pass_and_style_clean_rate", "Share of completions that both pass tests and have no Ruff style violations."),
+    ("score_6_rate", "Share of completions receiving a perfect 6.0 under the active reward profile."),
     ("no_code_rate", "Share of completions where no valid code could be extracted."),
     ("syntax_error_rate", "Share of completions that failed with Python syntax errors."),
     ("timeout_rate", "Share of completions that timed out during execution/testing."),
@@ -71,6 +72,7 @@ METRIC_CATEGORIES = {
         "tests reward",
         "extra text penalty",
         "reward_combined",
+        "reward_profiled",
         "logged reward_total std",
     ],
     "Core success rates": [
@@ -720,13 +722,16 @@ def sample_step_stats(samples: list[dict]) -> dict[str, dict[int, float]]:
         stats["extra_text_rate"][step] = sum(row.get("format_status") == "extra_text_after_code" for row in rows) / count
         stats["syntax_ok_rate"][step] = sum(row.get("syntax_status") == "ok" for row in rows) / count
         stats["style_clean_rate"][step] = sum(
-            row.get("style_status") == "ok" or numeric(row.get("style_violation_count")) == 0
-            for row in rows
+            row.get("style_status") == "ok" for row in rows
         ) / count
         stats["style_violation_rate"][step] = sum(row.get("style_status") == "violations" for row in rows) / count
         stats["compile_ok_rate"][step] = sum(row.get("compile_status") == "ok" for row in rows) / count
         stats["runtime_ok_rate"][step] = sum(row.get("runtime_status") == "ok" for row in rows) / count
         stats["test_pass_rate"][step] = sum(row.get("test_status") == "passed" for row in rows) / count
+        stats["pass_and_style_clean_rate"][step] = sum(
+            row.get("test_status") == "passed" and row.get("style_status") == "ok"
+            for row in rows
+        ) / count
         stats["score_6_rate"][step] = sum(numeric(row.get("reward_total")) == 6.0 for row in rows) / count
         stats["no_code_rate"][step] = sum(row.get("failure_reason") == "no_code_extracted" for row in rows) / count
         stats["syntax_error_rate"][step] = sum(row.get("failure_reason") == "syntax_error" for row in rows) / count
@@ -795,13 +800,14 @@ def final_summary(samples: list[dict]) -> dict[str, float | int | str]:
     reward_values = [value for value in reward_values if value is not None]
 
     return {
+        "reward_profile": samples[0].get("reward_profile", "unknown"),
+        "reward_weights": samples[0].get("reward_weights", "unknown"),
         "samples": total,
         "avg_reward_total": round(sum(reward_values) / len(reward_values), 4) if reward_values else 0,
         "format_ok_rate": round(sum(row.get("format_status") == "ok" for row in samples) / total, 4),
         "syntax_ok_rate": round(sum(row.get("syntax_status") == "ok" for row in samples) / total, 4),
         "style_clean_rate": round(
-            sum(row.get("style_status") == "ok" or numeric(row.get("style_violation_count")) == 0 for row in samples)
-            / total,
+            sum(row.get("style_status") == "ok" for row in samples) / total,
             4,
         ),
         "avg_style_score": round(
@@ -816,6 +822,14 @@ def final_summary(samples: list[dict]) -> dict[str, float | int | str]:
         "compile_ok_rate": round(sum(row.get("compile_status") == "ok" for row in samples) / total, 4),
         "runtime_ok_rate": round(sum(row.get("runtime_status") == "ok" for row in samples) / total, 4),
         "test_pass_rate": round(sum(row.get("test_status") == "passed" for row in samples) / total, 4),
+        "pass_and_style_clean_rate": round(
+            sum(
+                row.get("test_status") == "passed" and row.get("style_status") == "ok"
+                for row in samples
+            )
+            / total,
+            4,
+        ),
         "score_6_rate": round(sum(numeric(row.get("reward_total")) == 6.0 for row in samples) / total, 4),
     }
 
@@ -861,19 +875,23 @@ def eval_summary_rows(eval_rows: list[dict]) -> list[dict]:
 
         summaries.append({
             "name": name,
+            "reward_profile": rows[0].get("reward_profile", "unknown"),
             "rows": total,
             "tasks": len(by_task),
             "avg_reward": sum(rewards) / len(rewards) if rewards else 0,
             "format_ok_rate": sum(row.get("format_status") == "ok" for row in rows) / total,
             "syntax_ok_rate": sum(row.get("syntax_status") == "ok" for row in rows) / total,
             "style_clean_rate": sum(
-                row.get("style_status") == "ok" or numeric(row.get("style_violation_count")) == 0
-                for row in rows
+                row.get("style_status") == "ok" for row in rows
             ) / total,
             "avg_style_score": mean([numeric(row.get("style_score")) for row in rows]) or 0,
             "compile_ok_rate": sum(row.get("compile_status") == "ok" for row in rows) / total,
             "runtime_ok_rate": sum(row.get("runtime_status") == "ok" for row in rows) / total,
             "test_pass_rate": sum(row.get("test_status") == "passed" for row in rows) / total,
+            "pass_and_style_clean_rate": sum(
+                row.get("test_status") == "passed" and row.get("style_status") == "ok"
+                for row in rows
+            ) / total,
             "pass_at_any_rate": pass_at_any / len(by_task) if by_task else 0,
         })
 
@@ -976,6 +994,11 @@ def build_dashboard(
 
     stats = sample_step_stats(samples)
     eval_summaries = eval_summary_rows(eval_rows)
+    reward_profile = "unknown"
+    if samples:
+        reward_profile = samples[0].get("reward_profile", "unknown")
+    elif eval_rows:
+        reward_profile = eval_rows[0].get("reward_profile", "unknown")
 
     fig = make_subplots(
         rows=5,
@@ -1015,6 +1038,7 @@ def build_dashboard(
     add_stat_line(fig, 1, 2, stats, "compile_ok_rate", "compile ok", rolling_window, recent_steps)
     add_stat_line(fig, 1, 2, stats, "runtime_ok_rate", "runtime ok", rolling_window, recent_steps)
     add_stat_line(fig, 1, 2, stats, "test_pass_rate", "tests passed", rolling_window, recent_steps)
+    add_stat_line(fig, 1, 2, stats, "pass_and_style_clean_rate", "pass + style clean", rolling_window, recent_steps)
     add_stat_line(fig, 1, 2, stats, "score_6_rate", "perfect 6.0", rolling_window, recent_steps)
 
     add_stat_line(fig, 2, 1, stats, "no_code_rate", "no code extracted", rolling_window, recent_steps)
@@ -1078,6 +1102,7 @@ def build_dashboard(
             go.Table(
                 header=dict(values=[
                     "eval",
+                    "profile",
                     "rows",
                     "tasks",
                     "avg_reward",
@@ -1088,10 +1113,12 @@ def build_dashboard(
                     "compile_ok",
                     "runtime_ok",
                     "test_pass",
+                    "pass+style",
                     "pass@any",
                 ]),
                 cells=dict(values=[
                     [row["name"] for row in eval_summaries],
+                    [row["reward_profile"] for row in eval_summaries],
                     [row["rows"] for row in eval_summaries],
                     [row["tasks"] for row in eval_summaries],
                     [round(row["avg_reward"], 4) for row in eval_summaries],
@@ -1102,6 +1129,7 @@ def build_dashboard(
                     [round(row["compile_ok_rate"], 4) for row in eval_summaries],
                     [round(row["runtime_ok_rate"], 4) for row in eval_summaries],
                     [round(row["test_pass_rate"], 4) for row in eval_summaries],
+                    [round(row["pass_and_style_clean_rate"], 4) for row in eval_summaries],
                     [round(row["pass_at_any_rate"], 4) for row in eval_summaries],
                 ]),
                 name="Evaluation summaries",
@@ -1113,6 +1141,7 @@ def build_dashboard(
     fig.update_layout(
         title=(
             "Conrad GRPO Coding Training Dashboard "
+            f"| reward_profile={reward_profile} "
             f"| rolling_window={rolling_window}, recent_steps={recent_steps or 'all'}"
         ),
         height=1750,

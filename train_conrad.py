@@ -13,6 +13,10 @@ Main modes:
 - tiny_overfit_train
 - eval_lora_tiny
 
+Reward profiles are configured in configs/reward_profiles.json and selected
+with REWARD_PROFILE. Built-in profiles are correctness, style, combined, and
+legacy_correctness.
+
 Example usage:
 
 1. Check reward/evaluation code:
@@ -37,13 +41,17 @@ Example usage:
    TEST_MODE=eval_lora_tiny LORA_PATH=grpo_mvp_lora python train_conrad.py
 """
 
+import ast
+import csv
+import json
+import os
+import random
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
-import random
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -55,13 +63,6 @@ try:
     import resource
 except ImportError:
     resource = None
-
-import sys
-import shutil
-import csv
-import json
-import tempfile
-from datetime import datetime
 
 from unsloth import FastModel
 import torch
@@ -119,17 +120,18 @@ def set_seed(seed: int) -> None:
 
 MODEL_NAME = os.getenv("MODEL_NAME", "unsloth/Qwen3.6-27B")
 
-MAX_SEQ_LENGTH = int(os.getenv("MAX_SEQ_LENGTH", "2048"))
-LOAD_IN_4BIT = os.getenv("LOAD_IN_4BIT", "1") == "1"
-LOAD_IN_8BIT = os.getenv("LOAD_IN_8BIT", "0") == "1"
-LOAD_IN_16BIT = os.getenv("LOAD_IN_16BIT", "0") == "1"
-FULL_FINETUNING = False
+MAX_SEQ_LENGTH = env_int("MAX_SEQ_LENGTH", 2048)
+LOAD_IN_4BIT = env_bool("LOAD_IN_4BIT", True)
+LOAD_IN_8BIT = env_bool("LOAD_IN_8BIT", False)
+LOAD_IN_16BIT = env_bool("LOAD_IN_16BIT", False)
+FULL_FINETUNING = env_bool("FULL_FINETUNING", False)
 
 if LOAD_IN_4BIT or LOAD_IN_8BIT:
     LOAD_IN_16BIT = False
 
-LORA_RANK = int(os.getenv("LORA_RANK", "16"))
+LORA_RANK = int(os.getenv("LORA_RANK", os.getenv("LORA_R", "16")))
 LORA_ALPHA = int(os.getenv("LORA_ALPHA", str(LORA_RANK)))
+LORA_DROPOUT = float(os.getenv("LORA_DROPOUT", "0.0"))
 LORA_TARGET_MODULES = os.getenv("LORA_TARGET_MODULES", "all-linear")
 USE_CHAT_TEMPLATE = os.getenv("USE_CHAT_TEMPLATE", "1") == "1"
 QWEN_ENABLE_THINKING = os.getenv("QWEN_ENABLE_THINKING", "0") == "1"
@@ -150,7 +152,6 @@ VALID_TEST_MODES = {
 if TEST_MODE not in VALID_TEST_MODES:
     raise ValueError(f"Unknown TEST_MODE={TEST_MODE}. Valid modes: {sorted(VALID_TEST_MODES)}")
 
-MODEL_NAME = env_str("MODEL_NAME", "codellama/CodeLlama-7b-Python-hf")
 RUN_NAME = env_str("RUN_NAME", f"{TEST_MODE}_{MODEL_NAME.split('/')[-1]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 RUN_ROOT = Path(env_str("RUN_ROOT", str(Path("grpo_runs") / RUN_NAME)))
 LOG_DIR = Path(env_str("LOG_DIR", str(RUN_ROOT / "logs")))
@@ -201,20 +202,6 @@ LEARNING_RATE = env_float("LEARNING_RATE", 5e-6)
 WARMUP_RATIO = env_float("WARMUP_RATIO", 0.03)
 WEIGHT_DECAY = env_float("WEIGHT_DECAY", 0.0)
 
-LOAD_IN_4BIT = env_bool("LOAD_IN_4BIT", True)
-
-LORA_R = env_int("LORA_R", 16)
-LORA_ALPHA = env_int("LORA_ALPHA", 16)
-LORA_DROPOUT = env_float("LORA_DROPOUT", 0.0)
-
-# Use fuller target modules by default. This helps Qwen/CodeLlama more than q/v only.
-DEFAULT_TARGET_MODULES = "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj"
-TARGET_MODULES = [
-    module.strip()
-    for module in env_str("LORA_TARGET_MODULES", DEFAULT_TARGET_MODULES).split(",")
-    if module.strip()
-]
-
 TRAIN_TASK_START = env_int("TRAIN_TASK_START", 0)
 TRAIN_TASK_END = env_int("TRAIN_TASK_END", 131)
 
@@ -232,11 +219,88 @@ USE_RESOURCE_LIMITS = env_bool("CODE_RUN_USE_RESOURCE_LIMITS", False)
 STRICT_AFTER_CODE = env_bool("STRICT_AFTER_CODE", True)
 EXTRA_TEXT_PENALTY = env_float("EXTRA_TEXT_PENALTY", 0.2)
 
+RUFF_COMMAND = env_str("RUFF_COMMAND", "ruff")
+RUFF_SELECT = env_str("RUFF_SELECT", "E,W")
+STYLE_PENALTY_BUDGET = env_float("STYLE_PENALTY_BUDGET", 10.0)
+LIGHT_PENALTY_CODES = {
+    code.strip()
+    for code in env_str("LIGHT_PENALTY_CODES", "E501,W291,W293").split(",")
+    if code.strip()
+}
+
+REWARD_PROFILE = env_str("REWARD_PROFILE", "combined")
+REWARD_CONFIG_PATH = Path(env_str("REWARD_CONFIG_PATH", "configs/reward_profiles.json"))
+REWARD_WEIGHTS_JSON = env_str("REWARD_WEIGHTS_JSON", "")
+
 EVAL_TEMPERATURE = env_float("EVAL_TEMPERATURE", 0.2)
 EVAL_TOP_P = env_float("EVAL_TOP_P", 0.95)
 TRAIN_TEMPERATURE_NOTE = env_str("TRAIN_TEMPERATURE_NOTE", "GRPOTrainer controls generation internally.")
 
 LOG_COMPLETIONS_ON_ALL_RANKS = env_bool("LOG_COMPLETIONS_ON_ALL_RANKS", False)
+
+
+def load_reward_configuration() -> tuple[dict, dict[str, float], str]:
+    if not REWARD_CONFIG_PATH.exists():
+        raise FileNotFoundError(f"Reward configuration not found: {REWARD_CONFIG_PATH}")
+
+    config = json.loads(REWARD_CONFIG_PATH.read_text(encoding="utf-8"))
+    metric_definitions = config.get("metrics", {})
+    profiles = config.get("profiles", {})
+
+    if not metric_definitions or not profiles:
+        raise ValueError(
+            f"Reward configuration {REWARD_CONFIG_PATH} must define metrics and profiles."
+        )
+
+    missing_fields = sorted(
+        name
+        for name, definition in metric_definitions.items()
+        if not definition.get("diagnostic_field")
+    )
+    if missing_fields:
+        raise ValueError(f"Reward metrics missing diagnostic_field: {missing_fields}")
+
+    if REWARD_PROFILE not in profiles:
+        raise ValueError(
+            f"Unknown REWARD_PROFILE={REWARD_PROFILE}. "
+            f"Valid profiles: {sorted(profiles)}"
+        )
+
+    profile = profiles[REWARD_PROFILE]
+    weights = {
+        name: float(weight)
+        for name, weight in profile.get("weights", {}).items()
+    }
+    if not weights:
+        raise ValueError(f"Reward profile {REWARD_PROFILE} has no metric weights.")
+
+    if REWARD_WEIGHTS_JSON:
+        overrides = json.loads(REWARD_WEIGHTS_JSON)
+        weights.update({name: float(weight) for name, weight in overrides.items()})
+
+    for metric_name in metric_definitions:
+        override_name = f"REWARD_WEIGHT_{metric_name.upper()}"
+        if override_name in os.environ:
+            weights[metric_name] = env_float(override_name, 0.0)
+
+    unknown_metrics = sorted(set(weights) - set(metric_definitions))
+    if unknown_metrics:
+        raise ValueError(
+            f"Reward profile {REWARD_PROFILE} references unknown metrics: {unknown_metrics}"
+        )
+
+    return metric_definitions, weights, str(profile.get("description", ""))
+
+
+REWARD_METRICS, REWARD_WEIGHTS, REWARD_PROFILE_DESCRIPTION = load_reward_configuration()
+
+if REWARD_WEIGHTS.get("style", 0.0) != 0.0:
+    ruff_executable = shlex.split(RUFF_COMMAND)[0]
+    if shutil.which(ruff_executable) is None:
+        raise RuntimeError(
+            f"Reward profile {REWARD_PROFILE} requires Ruff, but "
+            f"{ruff_executable!r} was not found. Install Ruff or set RUFF_COMMAND."
+        )
 
 
 SAFE_EXEC_PREAMBLE = """from typing import *
@@ -274,6 +338,8 @@ LOG_FIELDS = [
     "run_root",
     "test_mode",
     "model_name",
+    "reward_profile",
+    "reward_weights",
     "seed",
     "world_size",
     "step",
@@ -291,10 +357,21 @@ LOG_FIELDS = [
     "test_status",
     "test_error_message",
     "test_stderr_preview",
+    "syntax_status",
+    "style_status",
+    "style_score",
+    "style_penalty",
+    "style_violation_count",
+    "style_codes",
+    "style_messages",
     "reward_format",
+    "reward_syntax",
+    "reward_style",
     "reward_compile",
     "reward_tests",
     "reward_extra_text_penalty",
+    "reward_metric_values",
+    "reward_contributions",
     "reward_total",
     "prompt_token_length",
     "completion_token_length",
@@ -306,9 +383,35 @@ DIAGNOSTIC_CACHE = {}
 if is_main_process():
     with CSV_LOG_PATH.open("w", newline="", encoding="utf-8") as csv_file:
         csv.DictWriter(csv_file, fieldnames=LOG_FIELDS).writeheader()
+    RUN_CONFIG_PATH.write_text(
+        json.dumps(
+            {
+                "run_name": RUN_NAME,
+                "test_mode": TEST_MODE,
+                "model_name": MODEL_NAME,
+                "reward_profile": REWARD_PROFILE,
+                "reward_profile_description": REWARD_PROFILE_DESCRIPTION,
+                "reward_config_path": str(REWARD_CONFIG_PATH),
+                "reward_metrics": REWARD_METRICS,
+                "reward_weights": REWARD_WEIGHTS,
+                "ruff_command": RUFF_COMMAND,
+                "ruff_select": RUFF_SELECT,
+                "style_penalty_budget": STYLE_PENALTY_BUDGET,
+                "seed": SEED,
+                "world_size": WORLD_SIZE,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
 print(f"TEST_MODE={TEST_MODE}")
 print(f"MODEL_NAME={MODEL_NAME}")
+print(
+    f"Reward profile: {REWARD_PROFILE} "
+    f"({REWARD_PROFILE_DESCRIPTION or 'no description'}), "
+    f"weights={json.dumps(REWARD_WEIGHTS, sort_keys=True)}"
+)
 print(
     "Model loading: "
     f"max_seq_length={MAX_SEQ_LENGTH}, "
@@ -341,16 +444,6 @@ print(
     f"tiny_max_steps={TINY_MAX_STEPS}"
 )
 print(f"Logging completions to {JSONL_LOG_PATH} and {CSV_LOG_PATH}")
-
-
-# ── 2. Clean outputs only when training ────────────────────────────────────────
-# Important: do NOT delete grpo_mvp_lora when evaluating LoRA.
-
-if TEST_MODE in ["train", "tiny_overfit_train"]:
-    for d in ["grpo_mvp_output", "grpo_mvp_lora"]:
-        if os.path.exists(d):
-            shutil.rmtree(d)
-            print(f"Cleaned {d}/")
 
 
 # ── 3. Model loading ───────────────────────────────────────────────────────────
@@ -413,20 +506,21 @@ if TEST_MODE != "sanity_reward":
     ):
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = FastModel.get_peft_model(
-        model,
-        r=LORA_RANK,
-        target_modules=parse_lora_target_modules(LORA_TARGET_MODULES),
-        lora_alpha=LORA_ALPHA,
-        lora_dropout=0,
-        bias="none",
-        finetune_vision_layers=False,
-        finetune_language_layers=True,
-        finetune_attention_modules=True,
-        finetune_mlp_modules=True,
-        use_gradient_checkpointing="unsloth",
-        random_state=3407,
-    )
+    if TEST_MODE in {"train", "tiny_overfit_train"}:
+        model = FastModel.get_peft_model(
+            model,
+            r=LORA_RANK,
+            target_modules=parse_lora_target_modules(LORA_TARGET_MODULES),
+            lora_alpha=LORA_ALPHA,
+            lora_dropout=LORA_DROPOUT,
+            bias="none",
+            finetune_vision_layers=False,
+            finetune_language_layers=True,
+            finetune_attention_modules=True,
+            finetune_mlp_modules=True,
+            use_gradient_checkpointing="unsloth",
+            random_state=SEED,
+        )
     ensure_warnings_issued_attr(model)
 
 
@@ -537,9 +631,6 @@ def extract_code(text: str) -> str | None:
     if isinstance(text, list):
         text = normalize_completion(text)
 
-    if "</code>" not in text:
-        return None
-
     before_close = text.split("</code>", 1)[0].strip()
 
     if "<code>" in before_close:
@@ -644,6 +735,62 @@ def value_at(kwargs: dict, key: str, index: int, default: str = ""):
 
 # ── 9. Completion analysis / reward diagnostics ───────────────────────────────
 
+def ruff_penalty(code: str) -> tuple[float, list[str], list[str], str, str]:
+    with tempfile.TemporaryDirectory(prefix="style_reward_") as tmpdir:
+        code_path = Path(tmpdir) / "solution.py"
+        code_path.write_text(code.rstrip() + "\n", encoding="utf-8")
+        command = [
+            *shlex.split(RUFF_COMMAND),
+            "check",
+            "--select",
+            RUFF_SELECT,
+            "--output-format",
+            "json",
+            "--isolated",
+            str(code_path),
+        ]
+
+        try:
+            result = subprocess.run(
+                command,
+                cwd=tmpdir,
+                timeout=RUN_TIMEOUT_SECONDS,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            return (
+                STYLE_PENALTY_BUDGET,
+                [],
+                [],
+                "ruff_missing",
+                f"Could not find Ruff command: {RUFF_COMMAND}",
+            )
+        except subprocess.TimeoutExpired:
+            return STYLE_PENALTY_BUDGET, [], [], "ruff_timeout", "Ruff timed out"
+
+    try:
+        violations = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return STYLE_PENALTY_BUDGET, [], [], "ruff_json_error", result.stdout[:500]
+
+    if result.returncode not in {0, 1}:
+        message = result.stderr[:500] or result.stdout[:500]
+        return STYLE_PENALTY_BUDGET, [], [], "ruff_error", message
+
+    codes = []
+    messages = []
+    penalty = 0.0
+    for violation in violations:
+        code_id = str(violation.get("code") or "unknown")
+        message = str(violation.get("message") or "")
+        codes.append(code_id)
+        messages.append(f"{code_id}: {message}")
+        penalty += 0.5 if code_id in LIGHT_PENALTY_CODES else 1.0
+
+    return penalty, codes, messages, "ok", ""
+
+
 def analyze_completion(completion, test: str = "", entry_point: str = "") -> dict:
     text = normalize_completion(completion)
     format_ok = "</code>" in text
@@ -663,7 +810,16 @@ def analyze_completion(completion, test: str = "", entry_point: str = "") -> dic
         "test_status": "not_run",
         "test_error_message": "",
         "test_stderr_preview": "",
+        "syntax_status": "not_checked",
+        "style_status": "not_checked",
+        "style_score": 0.0,
+        "style_penalty": 0.0,
+        "style_violation_count": 0,
+        "style_codes": "",
+        "style_messages": "",
         "reward_format": 1.0 if format_ok else 0.0,
+        "reward_syntax": 0.0,
+        "reward_style": 0.0,
         "reward_compile": 0.0,
         "reward_tests": 0.0,
         "reward_extra_text_penalty": extra_text_penalty,
@@ -684,13 +840,32 @@ def analyze_completion(completion, test: str = "", entry_point: str = "") -> dic
         return diagnostic
 
     try:
-        compile(code, "<string>", "exec")
+        ast.parse(code)
+        diagnostic["syntax_status"] = "ok"
         diagnostic["compile_status"] = "ok"
+        diagnostic["reward_syntax"] = 1.0
     except SyntaxError as exc:
+        diagnostic["syntax_status"] = "syntax_error"
         diagnostic["compile_status"] = "syntax_error"
         diagnostic["failure_reason"] = "syntax_error"
         diagnostic["error_message"] = str(exc)
         return diagnostic
+
+    penalty, codes, messages, style_status, style_error = ruff_penalty(code)
+    diagnostic["style_status"] = (
+        style_status if style_status != "ok" else ("ok" if not codes else "violations")
+    )
+    diagnostic["style_penalty"] = penalty
+    diagnostic["style_violation_count"] = len(codes)
+    diagnostic["style_codes"] = ",".join(codes)
+    diagnostic["style_messages"] = " | ".join(messages[:20])
+    diagnostic["style_score"] = max(
+        0.0,
+        1.0 - penalty / max(STYLE_PENALTY_BUDGET, 1e-6),
+    )
+    diagnostic["reward_style"] = diagnostic["style_score"]
+    if style_error:
+        diagnostic["error_message"] = style_error
 
     try:
         result = run_python_script(f"{SAFE_EXEC_PREAMBLE}\n{code}")
@@ -741,14 +916,23 @@ def analyze_completion(completion, test: str = "", entry_point: str = "") -> dic
     return diagnostic
 
 
+def reward_metric_values_from_diagnostic(diagnostic: dict) -> dict[str, float]:
+    return {
+        metric_name: float(diagnostic.get(definition["diagnostic_field"], 0.0) or 0.0)
+        for metric_name, definition in REWARD_METRICS.items()
+    }
+
+
+def reward_contributions_from_diagnostic(diagnostic: dict) -> dict[str, float]:
+    values = reward_metric_values_from_diagnostic(diagnostic)
+    return {
+        metric_name: weight * values[metric_name]
+        for metric_name, weight in REWARD_WEIGHTS.items()
+    }
+
+
 def total_reward_from_diagnostic(diagnostic: dict) -> float:
-    total = (
-        0.2 * diagnostic["reward_format"]
-        + 0.8 * diagnostic["reward_compile"]
-        + 5.0 * diagnostic["reward_tests"]
-        - diagnostic.get("reward_extra_text_penalty", 0.0)
-    )
-    return max(0.0, float(total))
+    return max(0.0, sum(reward_contributions_from_diagnostic(diagnostic).values()))
 
 
 def get_completion_diagnostic(index: int, completion, kwargs: dict) -> dict:
@@ -791,6 +975,8 @@ def log_completion(index: int, completion, diagnostic: dict, kwargs: dict) -> No
         "run_root": str(RUN_ROOT),
         "test_mode": TEST_MODE,
         "model_name": MODEL_NAME,
+        "reward_profile": REWARD_PROFILE,
+        "reward_weights": json.dumps(REWARD_WEIGHTS, sort_keys=True),
         "seed": SEED,
         "world_size": WORLD_SIZE,
         "step": row_number // NUM_GENERATIONS,
@@ -808,10 +994,27 @@ def log_completion(index: int, completion, diagnostic: dict, kwargs: dict) -> No
         "test_status": diagnostic["test_status"],
         "test_error_message": diagnostic["test_error_message"],
         "test_stderr_preview": diagnostic["test_stderr_preview"],
+        "syntax_status": diagnostic["syntax_status"],
+        "style_status": diagnostic["style_status"],
+        "style_score": diagnostic["style_score"],
+        "style_penalty": diagnostic["style_penalty"],
+        "style_violation_count": diagnostic["style_violation_count"],
+        "style_codes": diagnostic["style_codes"],
+        "style_messages": diagnostic["style_messages"],
         "reward_format": diagnostic["reward_format"],
+        "reward_syntax": diagnostic["reward_syntax"],
+        "reward_style": diagnostic["reward_style"],
         "reward_compile": diagnostic["reward_compile"],
         "reward_tests": diagnostic["reward_tests"],
         "reward_extra_text_penalty": diagnostic.get("reward_extra_text_penalty", 0.0),
+        "reward_metric_values": json.dumps(
+            reward_metric_values_from_diagnostic(diagnostic),
+            sort_keys=True,
+        ),
+        "reward_contributions": json.dumps(
+            reward_contributions_from_diagnostic(diagnostic),
+            sort_keys=True,
+        ),
         "reward_total": reward_total,
         "prompt_token_length": token_count(prompt),
         "completion_token_length": token_count(normalize_completion(completion)),
@@ -823,24 +1026,30 @@ def log_completion(index: int, completion, diagnostic: dict, kwargs: dict) -> No
 
 # ── 11. Reward function for GRPO ───────────────────────────────────────────────
 
-def reward_combined(completions, **kwargs) -> list[float]:
+def reward_profiled(completions, **kwargs) -> list[float]:
     scores = []
 
     for index, completion in enumerate(completions):
         diagnostic = get_completion_diagnostic(index, completion, kwargs)
         score = total_reward_from_diagnostic(diagnostic)
+        contributions = reward_contributions_from_diagnostic(diagnostic)
         scores.append(score)
 
         if is_main_process():
             preview = diagnostic["raw_completion"][:220].replace("\n", "|")
             print(f"  [OUTPUT] {preview}")
             print(
-                "  [COMBINED] "
+                "  [REWARD] "
+                f"profile={REWARD_PROFILE} "
                 f"score={score} "
                 f"format={diagnostic['reward_format']} "
+                f"syntax={diagnostic['reward_syntax']} "
                 f"compile={diagnostic['reward_compile']} "
+                f"style={diagnostic['reward_style']} "
                 f"tests={diagnostic['reward_tests']} "
                 f"extra_penalty={diagnostic.get('reward_extra_text_penalty', 0.0)} "
+                f"contributions={json.dumps(contributions, sort_keys=True)} "
+                f"style_status={diagnostic['style_status']} "
                 f"compile_status={diagnostic['compile_status']} "
                 f"runtime_status={diagnostic['runtime_status']} "
                 f"test_status={diagnostic['test_status']} "
@@ -939,6 +1148,8 @@ def evaluate_model(eval_dataset, label: str, output_path: Path):
                 "run_name": RUN_NAME,
                 "run_root": str(RUN_ROOT),
                 "model_name": MODEL_NAME,
+                "reward_profile": REWARD_PROFILE,
+                "reward_weights": json.dumps(REWARD_WEIGHTS, sort_keys=True),
                 "lora_path": str(LORA_PATH) if "lora" in label else "",
                 "task_id": task_id,
                 "item_idx": item_idx,
@@ -954,10 +1165,27 @@ def evaluate_model(eval_dataset, label: str, output_path: Path):
                 "test_status": diagnostic["test_status"],
                 "test_error_message": diagnostic["test_error_message"],
                 "test_stderr_preview": diagnostic["test_stderr_preview"],
+                "syntax_status": diagnostic["syntax_status"],
+                "style_status": diagnostic["style_status"],
+                "style_score": diagnostic["style_score"],
+                "style_penalty": diagnostic["style_penalty"],
+                "style_violation_count": diagnostic["style_violation_count"],
+                "style_codes": diagnostic["style_codes"],
+                "style_messages": diagnostic["style_messages"],
                 "reward_format": diagnostic["reward_format"],
+                "reward_syntax": diagnostic["reward_syntax"],
+                "reward_style": diagnostic["reward_style"],
                 "reward_compile": diagnostic["reward_compile"],
                 "reward_tests": diagnostic["reward_tests"],
                 "reward_extra_text_penalty": diagnostic.get("reward_extra_text_penalty", 0.0),
+                "reward_metric_values": json.dumps(
+                    reward_metric_values_from_diagnostic(diagnostic),
+                    sort_keys=True,
+                ),
+                "reward_contributions": json.dumps(
+                    reward_contributions_from_diagnostic(diagnostic),
+                    sort_keys=True,
+                ),
                 "reward_total": reward_total,
                 "completion_token_length": token_count(completion),
             }
@@ -969,7 +1197,10 @@ def evaluate_model(eval_dataset, label: str, output_path: Path):
                 f"task={task_id} "
                 f"gen={gen_idx} "
                 f"reward={reward_total} "
+                f"profile={REWARD_PROFILE} "
                 f"format={diagnostic['format_status']} "
+                f"syntax={diagnostic['syntax_status']} "
+                f"style={diagnostic['style_status']} "
                 f"compile={diagnostic['compile_status']} "
                 f"runtime={diagnostic['runtime_status']} "
                 f"test={diagnostic['test_status']} "
@@ -992,6 +1223,12 @@ def evaluate_model(eval_dataset, label: str, output_path: Path):
         writer.writerows(rows)
 
     passed = sum(1 for row in rows if row["test_status"] == "passed")
+    style_ok = sum(1 for row in rows if row["style_status"] == "ok")
+    passed_and_style_ok = sum(
+        1
+        for row in rows
+        if row["test_status"] == "passed" and row["style_status"] == "ok"
+    )
     format_ok = sum(1 for row in rows if row["format_status"] == "ok")
     compile_ok = sum(1 for row in rows if row["compile_status"] == "ok")
     avg_reward = sum(float(row["reward_total"]) for row in rows) / len(rows)
@@ -1008,10 +1245,14 @@ def evaluate_model(eval_dataset, label: str, output_path: Path):
 
     summary = {
         "label": label,
+        "reward_profile": REWARD_PROFILE,
+        "reward_weights": REWARD_WEIGHTS,
         "rows": len(rows),
         "tasks": len(by_task),
         "avg_reward": avg_reward,
         "test_pass_rate_generation_level": passed / len(rows),
+        "style_ok_rate_generation_level": style_ok / len(rows),
+        "pass_and_style_ok_rate_generation_level": passed_and_style_ok / len(rows),
         "pass_at_any_generation_task_level": pass_at_any / len(by_task) if by_task else 0.0,
         "format_ok_rate": format_ok / len(rows),
         "compile_ok_rate": compile_ok / len(rows),
@@ -1062,20 +1303,32 @@ def sanity_check_reward_code():
         print(name)
         print("-" * 60)
         print(f"format_status: {diagnostic['format_status']}")
+        print(f"syntax_status: {diagnostic['syntax_status']}")
+        print(f"style_status: {diagnostic['style_status']}")
+        print(f"style_score: {diagnostic['style_score']}")
+        print(f"style_penalty: {diagnostic['style_penalty']}")
+        print(f"style_codes: {diagnostic['style_codes'] or 'none'}")
         print(f"compile_status: {diagnostic['compile_status']}")
         print(f"runtime_status: {diagnostic['runtime_status']}")
         print(f"test_status: {diagnostic['test_status']}")
         print(f"failure_reason: {diagnostic['failure_reason'] or 'none'}")
         print(f"reward_format: {diagnostic['reward_format']}")
+        print(f"reward_syntax: {diagnostic['reward_syntax']}")
+        print(f"reward_style: {diagnostic['reward_style']}")
         print(f"reward_compile: {diagnostic['reward_compile']}")
         print(f"reward_tests: {diagnostic['reward_tests']}")
         print(f"reward_extra_text_penalty: {diagnostic.get('reward_extra_text_penalty', 0.0)}")
+        print(
+            "reward_contributions: "
+            f"{json.dumps(reward_contributions_from_diagnostic(diagnostic), sort_keys=True)}"
+        )
         print(f"reward_total: {reward_total}")
 
     print("\nExpected:")
-    print("correct_canonical_solution should get reward_total = 6.0")
+    print(f"Reward profile: {REWARD_PROFILE}, weights={REWARD_WEIGHTS}")
+    print("correct_canonical_solution should score strongly for active metrics")
     print("syntax_error should not pass compile/tests")
-    print("missing_closing_tag should get no_code_extracted")
+    print("missing_closing_tag may earn non-format metrics under profiles that enable them")
 
 
 # ── 15. LoRA loading for eval modes ────────────────────────────────────────────
@@ -1194,12 +1447,15 @@ if TEST_MODE in {"train", "tiny_overfit_train"}:
         model=model,
         args=training_args,
         processing_class=tokenizer,
-        reward_funcs=[reward_combined],
+        reward_funcs=[reward_profiled],
         train_dataset=dataset,
     )
 
     print_main("Starting training.")
-    print_main("Good sign: more test_status=passed and score=6.0 over time.")
+    print_main(
+        "Good sign: active reward contributions improve without correctness "
+        "or style diagnostics collapsing."
+    )
     print_main(f"Full completion diagnostics: {JSONL_LOG_PATH}")
     print_main(f"Trainer output: {OUTPUT_DIR}")
 

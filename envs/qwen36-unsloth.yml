@@ -49,6 +49,7 @@ dependencies:
       - datasets
       - pandas
       - plotly
+      - ruff
 
       # Utility / serialization dependencies used by the training and dashboard scripts.
       - numpy

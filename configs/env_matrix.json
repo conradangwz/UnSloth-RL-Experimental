@@ -35,7 +35,9 @@
       "GRADIENT_ACCUMULATION_STEPS": "1",
       "LEARNING_RATE": "5e-6",
       "LORA_R": "16",
-      "LORA_ALPHA": "16"
+      "LORA_ALPHA": "16",
+      "REWARD_PROFILE": "combined",
+      "REWARD_CONFIG_PATH": "configs/reward_profiles.json"
     },
     "notes": [
       "Stable environment for CodeLlama HumanEval GRPO experiments.",
@@ -78,7 +80,9 @@
       "GRADIENT_ACCUMULATION_STEPS": "4",
       "LEARNING_RATE": "5e-6",
       "LORA_R": "16",
-      "LORA_ALPHA": "16"
+      "LORA_ALPHA": "16",
+      "REWARD_PROFILE": "combined",
+      "REWARD_CONFIG_PATH": "configs/reward_profiles.json"
     },
     "hardware_notes": [
       "Qwen3.5-9B is the strongest realistic Qwen3.5 target for dual RTX 3090 GPUs.",
@@ -134,7 +138,9 @@
       "GRADIENT_ACCUMULATION_STEPS": "4",
       "LEARNING_RATE": "5e-6",
       "LORA_R": "16",
-      "LORA_ALPHA": "16"
+      "LORA_ALPHA": "16",
+      "REWARD_PROFILE": "combined",
+      "REWARD_CONFIG_PATH": "configs/reward_profiles.json"
     },
     "notes": [
       "Current Qwen path for the dual RTX 3090 setup when Qwen3.5-9B is too large.",
@@ -174,7 +180,9 @@
       "QWEN_ENABLE_THINKING": "false",
       "NUM_GENERATIONS": "2",
       "EVAL_NUM_GENERATIONS": "2",
-      "MAX_COMPLETION_LENGTH": "384"
+      "MAX_COMPLETION_LENGTH": "384",
+      "REWARD_PROFILE": "combined",
+      "REWARD_CONFIG_PATH": "configs/reward_profiles.json"
     },
     "hardware_notes": [
       "Default Qwen3.6 route for the dual RTX 3090 setup.",
@@ -223,7 +231,9 @@
       "QWEN_ENABLE_THINKING": "false",
       "NUM_GENERATIONS": "2",
       "EVAL_NUM_GENERATIONS": "2",
-      "MAX_COMPLETION_LENGTH": "384"
+      "MAX_COMPLETION_LENGTH": "384",
+      "REWARD_PROFILE": "combined",
+      "REWARD_CONFIG_PATH": "configs/reward_profiles.json"
     },
     "hardware_notes": [
       "Larger MoE option for machines with substantially more VRAM than a single RTX 3090.",

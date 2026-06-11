@@ -2,7 +2,7 @@
 
 This repository contains a GRPO-based coding RL workflow built around `train_conrad.py` and a set-and-forget launcher, `run_next_experiments.sh`.
 
-The project trains and evaluates code models on HumanEval using [Unsloth](https://github.com/unslothai/unsloth), [TRL](https://github.com/huggingface/trl), PEFT LoRA fine-tuning, and a reward function that checks formatting, compilation, runtime success, and unit tests.
+The project trains and evaluates code models on HumanEval using [Unsloth](https://github.com/unslothai/unsloth), [TRL](https://github.com/huggingface/trl), PEFT LoRA fine-tuning, and configurable reward profiles covering correctness, Ruff/PEP 8-style quality, and combined objectives.
 
 The repo currently supports three model families:
 
@@ -48,25 +48,55 @@ The model is prompted using either:
 
 The prompt expects the model to return a complete Python solution and then close with `</code>`.
 
-### Reward function
+### Reward profiles
 
-The current reward is designed around code correctness and output discipline:
+Every completion is evaluated for all available diagnostics:
 
-- `0.2` for formatting
-- `0.8` for code that compiles and runs successfully
-- `5.0` for passing the test
-- penalty for extra text after `</code>`
+- required output format
+- valid Python syntax
+- successful execution
+- Ruff `E,W` style compliance
+- HumanEval test correctness
+- unwanted text after `</code>`
 
-The total reward is:
+`REWARD_PROFILE` decides which diagnostics contribute to GRPO reward. Profiles
+are defined in `configs/reward_profiles.json`:
+
+Diagnostics are evaluated independently: missing `</code>` lowers the format
+metric but does not prevent otherwise extractable code from receiving
+correctness or style diagnostics.
+
+| Profile | Active reward |
+| --- | --- |
+| `correctness` | HumanEval tests only |
+| `style` | Ruff/PEP 8-style score only |
+| `combined` | Format, syntax, execution, style, and tests |
+| `legacy_correctness` | Original correctness and output-discipline formula |
+
+The default `combined` profile totals a maximum of `6.0`:
 
 ```text
-0.2 * reward_format + 0.8 * reward_compile + 5.0 * reward_tests - extra_text_penalty
+0.1 * format + 0.1 * syntax + 0.3 * compile + 1.0 * style + 4.5 * tests
 ```
 
-Important note:
+The metric registry is configuration-driven. To add another profile, add a
+profile and weights to `configs/reward_profiles.json`. To add a new metric,
+produce its diagnostic value in `train_conrad.py`, then register its diagnostic
+field in the same JSON file.
 
-- Style is tracked in the logs and dashboard.
-- Style is not part of the current reward formula in `train_conrad.py`.
+Profile weights can be overridden without editing the config:
+
+```bash
+REWARD_PROFILE=combined REWARD_WEIGHT_STYLE=2.0 REWARD_WEIGHT_TESTS=3.5 python train_conrad.py
+```
+
+Or override multiple weights with JSON:
+
+```bash
+REWARD_PROFILE=combined \
+REWARD_WEIGHTS_JSON='{"style": 2.0, "tests": 3.5}' \
+python train_conrad.py
+```
 
 ### Execution and safety
 
@@ -104,6 +134,7 @@ The launcher also writes HTML dashboards under `dashboards/`.
 - `plot_training_conrad_toggle.py` - dashboard builder for logs
 - `envs/` - conda environment files
 - `configs/env_matrix.json` - model-to-environment and launch recommendations
+- `configs/reward_profiles.json` - reward metrics, profiles, and weights
 
 ## Setup
 
@@ -137,6 +168,14 @@ conda env create -f envs/qwen36-moe-unsloth.yml
 
 ```bash
 conda activate qwen36_unsloth
+```
+
+The maintained environment files include Ruff because `style` and `combined`
+reward profiles require it. Existing environments created before this change
+must install Ruff manually or be recreated:
+
+```bash
+python -m pip install ruff
 ```
 
 ### 3. Verify GPU visibility
@@ -221,6 +260,28 @@ Run a single job:
 ./run_next_experiments.sh E8
 ```
 
+Run E8/E9 with a selected reward profile:
+
+```bash
+REWARD_PROFILE=correctness ./run_next_experiments.sh E8 E9
+REWARD_PROFILE=style ./run_next_experiments.sh E8 E9
+REWARD_PROFILE=combined ./run_next_experiments.sh E8 E9
+```
+
+Run all three reward-profile training/evaluation comparisons:
+
+```bash
+./run_next_experiments.sh reward-profiles
+```
+
+The explicit profile-specific job names are:
+
+```text
+E8-CORRECTNESS  E9-CORRECTNESS
+E8-STYLE        E9-STYLE
+E8-COMBINED     E9-COMBINED
+```
+
 Run a custom sequence:
 
 ```bash
@@ -279,7 +340,7 @@ CUDA_VISIBLE_DEVICES=0 \
 TEST_MODE=eval_lora_holdout \
 EVAL_NUM_GENERATIONS=8 \
 MODEL_NAME=unsloth/Qwen3.5-4B \
-LORA_PATH=/home/cang688/Unsloth-RL-2/grpo_runs/E8_qwen35_4b_dual3090_grpo/lora \
+LORA_PATH=/home/cang688/Unsloth-RL-2/grpo_runs/E8_qwen35_4b_combined_dual3090_grpo/lora \
 LOAD_IN_4BIT=false \
 LOAD_IN_16BIT=true \
 FAST_INFERENCE=false \
@@ -300,7 +361,9 @@ python train_conrad.py
 - `./run_next_experiments.sh E5 E6 E7 E8 E9`
   - Runs a custom Qwen sequence
 - `./run_next_experiments.sh E8`
-  - Runs a single job
+  - Runs a single job using `REWARD_PROFILE`, defaulting to `combined`
+- `./run_next_experiments.sh reward-profiles`
+  - Runs correctness-only, style-only, and combined E8/E9 comparisons
 
 ### Python commands
 
@@ -341,6 +404,13 @@ The table below explains the main variables, what they do, and what they influen
 | Variable | What it does | Depends on / influences |
 | --- | --- | --- |
 | `TEST_MODE` | Chooses training or eval behavior | Controls dataset slice, reward path, and whether training or eval runs |
+| `REWARD_PROFILE` | Selects a named reward profile | Controls which diagnostic metrics contribute to GRPO reward |
+| `REWARD_CONFIG_PATH` | Path to reward profile configuration | Defaults to `configs/reward_profiles.json` |
+| `REWARD_WEIGHTS_JSON` | JSON object of per-run weight overrides | Overrides weights from the selected profile |
+| `REWARD_WEIGHT_<METRIC>` | Overrides one named metric weight | Example: `REWARD_WEIGHT_STYLE=2.0` |
+| `RUFF_COMMAND` | Ruff executable/command | Used for PEP 8-style diagnostics |
+| `RUFF_SELECT` | Ruff rules selected for style scoring | Defaults to `E,W` |
+| `STYLE_PENALTY_BUDGET` | Violation penalty that reduces style score to zero | Controls style reward sensitivity |
 | `MODEL_NAME` | Selects the base model to load | Affects tokenizer, memory use, Qwen vs CodeLlama behavior, and LoRA compatibility |
 | `RUN_ROOT` | Root directory for a run | Controls where logs, outputs, and LoRA artifacts are written |
 | `LORA_PATH` | Path to a saved LoRA adapter for eval | Used by LoRA eval modes; must point at a trained adapter directory |
@@ -387,6 +457,8 @@ The table below explains the main variables, what they do, and what they influen
 ## Practical Notes
 
 - The queue launcher is designed for the remote path `/home/cang688/Unsloth-RL-2`.
+- `style` and `combined` profiles fail fast when Ruff is unavailable.
+- Run folders, LoRAs, and dashboards include the reward profile in their names.
 - Qwen training uses both RTX 3090 GPUs.
 - Base and LoRA evals are kept separate from the training jobs.
 - The script writes dashboards after evals and training runs.

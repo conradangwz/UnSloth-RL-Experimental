@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "metrics": {
+    "format": {
+      "diagnostic_field": "reward_format",
+      "description": "Completion includes the required closing </code> tag."
+    },
+    "syntax": {
+      "diagnostic_field": "reward_syntax",
+      "description": "Extracted code parses as valid Python."
+    },
+    "compile": {
+      "diagnostic_field": "reward_compile",
+      "description": "Extracted code executes without an immediate runtime failure."
+    },
+    "style": {
+      "diagnostic_field": "reward_style",
+      "description": "Normalised Ruff E/W compliance score."
+    },
+    "tests": {
+      "diagnostic_field": "reward_tests",
+      "description": "Generated solution passes the HumanEval tests."
+    },
+    "extra_text_penalty": {
+      "diagnostic_field": "reward_extra_text_penalty",
+      "description": "Penalty signal for unwanted text after </code>."
+    }
+  },
+  "profiles": {
+    "correctness": {
+      "description": "Reward HumanEval correctness only.",
+      "weights": {
+        "tests": 6.0
+      }
+    },
+    "style": {
+      "description": "Reward Ruff PEP 8-style compliance only.",
+      "weights": {
+        "style": 6.0
+      }
+    },
+    "combined": {
+      "description": "Reward correctness and style, with correctness dominant.",
+      "weights": {
+        "format": 0.1,
+        "syntax": 0.1,
+        "compile": 0.3,
+        "style": 1.0,
+        "tests": 4.5
+      }
+    },
+    "legacy_correctness": {
+      "description": "Original correctness and output-discipline reward.",
+      "weights": {
+        "format": 0.2,
+        "compile": 0.8,
+        "tests": 5.0,
+        "extra_text_penalty": -1.0
+      }
+    }
+  }
+}

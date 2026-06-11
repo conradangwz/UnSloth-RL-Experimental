@@ -18,18 +18,25 @@ LOG_ROOT="$PROJECT_ROOT/results/worklogs"
 CODELLAMA_ENV="unsloth_codelama"
 QWEN_ENV="qwen35_unsloth"
 QWEN_MODEL="unsloth/Qwen3.5-4B"
-
-QWEN_SANITY_ROOT="$RUNS_ROOT/E5_qwen35_sanity_reward"
-QWEN_TINY_ROOT="$RUNS_ROOT/E6_qwen35_tiny_overfit_50"
-QWEN_BASE_HOLDOUT_ROOT="$RUNS_ROOT/E7_qwen35_4b_base_holdout_8gen"
-QWEN_TRAIN_ROOT="$RUNS_ROOT/E8_qwen35_4b_dual3090_grpo"
-QWEN_LORA_HOLDOUT_ROOT="$RUNS_ROOT/E9_qwen35_4b_lora_holdout_8gen"
+DEFAULT_REWARD_PROFILE="${REWARD_PROFILE:-combined}"
 
 mkdir -p "$RUNS_ROOT" "$DASHBOARD_ROOT" "$LOG_ROOT"
 cd "$PROJECT_ROOT"
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+qwen_train_root() {
+  printf '%s/E8_qwen35_4b_%s_dual3090_grpo' "$RUNS_ROOT" "$1"
+}
+
+qwen_lora_holdout_root() {
+  printf '%s/E9_qwen35_4b_%s_lora_holdout_8gen' "$RUNS_ROOT" "$1"
+}
+
+codellama_train_root() {
+  printf '%s/E3_codelama_%s_dual3090_grpo' "$RUNS_ROOT" "$1"
 }
 
 run_in_conda_env() {
@@ -84,25 +91,33 @@ Jobs:
   E7  Qwen3.5-4B base holdout evaluation
   E8  Qwen3.5-4B dual-GPU GRPO training
   E9  Qwen3.5-4B trained LoRA holdout evaluation
+  E8-CORRECTNESS / E9-CORRECTNESS  Correctness-only train/eval
+  E8-STYLE / E9-STYLE              Style-only train/eval
+  E8-COMBINED / E9-COMBINED        Combined correctness/style train/eval
 
 Groups:
   all    Run the full queue in order
   code   Run E0, E1, E3, E4
   qwen   Run E5, E6, E7, E8, E9
+  reward-profiles  Run correctness, style, and combined E8/E9 comparisons
 
 Examples:
   ./run_next_experiments.sh
   ./run_next_experiments.sh E6
   ./run_next_experiments.sh E5 E6 E7 E8 E9
   ./run_next_experiments.sh qwen
+  REWARD_PROFILE=style ./run_next_experiments.sh E6 E8 E9
+  ./run_next_experiments.sh reward-profiles
 EOF
 }
 
 job_e0() {
-  local code_llama_sanity="$RUNS_ROOT/E0_codelama_sanity_reward"
-  log "E0: CodeLlama reward sanity check"
+  local profile="$DEFAULT_REWARD_PROFILE"
+  local code_llama_sanity="$RUNS_ROOT/E0_codelama_${profile}_sanity_reward"
+  log "E0: CodeLlama reward sanity check, reward profile=$profile"
   run_in_conda_env "$CODELLAMA_ENV" env \
     TEST_MODE=sanity_reward \
+    REWARD_PROFILE="$profile" \
     MODEL_NAME=codellama/CodeLlama-7b-Python-hf \
     RUN_ROOT="$code_llama_sanity" \
     LOAD_IN_4BIT=true \
@@ -112,10 +127,12 @@ job_e0() {
 }
 
 job_e1() {
-  local code_llama_base_holdout="$RUNS_ROOT/E1_codelama_base_holdout"
-  log "E1: CodeLlama base holdout eval"
+  local profile="$DEFAULT_REWARD_PROFILE"
+  local code_llama_base_holdout="$RUNS_ROOT/E1_codelama_${profile}_base_holdout"
+  log "E1: CodeLlama base holdout eval, reward profile=$profile"
   run_in_conda_env "$CODELLAMA_ENV" env \
     TEST_MODE=eval_base_holdout \
+    REWARD_PROFILE="$profile" \
     MODEL_NAME=codellama/CodeLlama-7b-Python-hf \
     RUN_ROOT="$code_llama_base_holdout" \
     LOAD_IN_4BIT=true \
@@ -123,16 +140,19 @@ job_e1() {
     FAST_INFERENCE=false \
     EVAL_NUM_GENERATIONS=4 \
     python train_conrad.py
-  make_dashboard "$CODELLAMA_ENV" "$code_llama_base_holdout" "$DASHBOARD_ROOT/E1_codelama_base_holdout.html"
+  make_dashboard "$CODELLAMA_ENV" "$code_llama_base_holdout" "$DASHBOARD_ROOT/E1_codelama_${profile}_base_holdout.html"
 }
 
 job_e3() {
-  local code_llama_train="$RUNS_ROOT/E3_codelama_single3090_grpo"
-  log "E3: CodeLlama dual-GPU GRPO training"
+  local profile="$DEFAULT_REWARD_PROFILE"
+  local code_llama_train
+  code_llama_train="$(codellama_train_root "$profile")"
+  log "E3: CodeLlama dual-GPU GRPO training, reward profile=$profile"
   run_in_conda_env "$CODELLAMA_ENV" env \
     CUDA_VISIBLE_DEVICES=0,1 \
     WORLD_SIZE=2 \
     TEST_MODE=train \
+    REWARD_PROFILE="$profile" \
     MODEL_NAME=codellama/CodeLlama-7b-Python-hf \
     RUN_ROOT="$code_llama_train" \
     LOAD_IN_4BIT=true \
@@ -150,32 +170,39 @@ job_e3() {
     NUM_GENERATIONS=4 \
     LEARNING_RATE=5e-6 \
     accelerate launch --num_processes 2 train_conrad.py
-  make_dashboard "$CODELLAMA_ENV" "$code_llama_train" "$DASHBOARD_ROOT/E3_codelama_single3090_grpo.html"
+  make_dashboard "$CODELLAMA_ENV" "$code_llama_train" "$DASHBOARD_ROOT/E3_codelama_${profile}_dual3090_grpo.html"
 }
 
 job_e4() {
-  local code_llama_lora_holdout="$RUNS_ROOT/E4_codelama_lora_holdout"
-  log "E4: CodeLlama trained LoRA holdout eval"
+  local profile="$DEFAULT_REWARD_PROFILE"
+  local code_llama_train
+  local code_llama_lora_holdout="$RUNS_ROOT/E4_codelama_${profile}_lora_holdout"
+  code_llama_train="$(codellama_train_root "$profile")"
+  log "E4: CodeLlama trained LoRA holdout eval, reward profile=$profile"
   run_in_conda_env "$CODELLAMA_ENV" env \
     TEST_MODE=eval_lora_holdout \
+    REWARD_PROFILE="$profile" \
     MODEL_NAME=codellama/CodeLlama-7b-Python-hf \
     RUN_ROOT="$code_llama_lora_holdout" \
-    LORA_PATH="$CODELLAMA_TRAIN/lora" \
+    LORA_PATH="$code_llama_train/lora" \
     LOAD_IN_4BIT=true \
     LOAD_IN_16BIT=false \
     FAST_INFERENCE=false \
     EVAL_NUM_GENERATIONS=4 \
     python train_conrad.py
-  make_dashboard "$CODELLAMA_ENV" "$code_llama_lora_holdout" "$DASHBOARD_ROOT/E4_codelama_lora_holdout.html"
+  make_dashboard "$CODELLAMA_ENV" "$code_llama_lora_holdout" "$DASHBOARD_ROOT/E4_codelama_${profile}_lora_holdout.html"
 }
 
 job_e5() {
-  log "E5: Qwen3.5 sanity reward check"
+  local profile="$DEFAULT_REWARD_PROFILE"
+  local run_root="$RUNS_ROOT/E5_qwen35_${profile}_sanity_reward"
+  log "E5: Qwen3.5 sanity reward check, reward profile=$profile"
   run_in_conda_env "$QWEN_ENV" env \
     UNSLOTH_COMPILE_DISABLE=1 \
     TEST_MODE=sanity_reward \
+    REWARD_PROFILE="$profile" \
     MODEL_NAME="$QWEN_MODEL" \
-    RUN_ROOT="$QWEN_SANITY_ROOT" \
+    RUN_ROOT="$run_root" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
     FAST_INFERENCE=false \
@@ -183,15 +210,18 @@ job_e5() {
 }
 
 job_e6() {
-  log "E6: Qwen3.5 tiny overfit train (50 steps)"
+  local profile="$DEFAULT_REWARD_PROFILE"
+  local run_root="$RUNS_ROOT/E6_qwen35_${profile}_tiny_overfit_50"
+  log "E6: Qwen3.5 tiny overfit train (50 steps), reward profile=$profile"
   run_in_conda_env "$QWEN_ENV" env \
     UNSLOTH_COMPILE_DISABLE=1 \
     CUDA_VISIBLE_DEVICES=0,1 \
     WORLD_SIZE=2 \
     TEST_MODE=tiny_overfit_train \
+    REWARD_PROFILE="$profile" \
     TINY_MAX_STEPS=50 \
     MODEL_NAME="$QWEN_MODEL" \
-    RUN_ROOT="$QWEN_TINY_ROOT" \
+    RUN_ROOT="$run_root" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
     FAST_INFERENCE=false \
@@ -207,17 +237,20 @@ job_e6() {
     NUM_GENERATIONS=4 \
     LEARNING_RATE=5e-6 \
     accelerate launch --num_processes 2 train_conrad.py
-  make_dashboard "$QWEN_ENV" "$QWEN_TINY_ROOT" "$DASHBOARD_ROOT/E6_qwen35_tiny_overfit_50.html"
+  make_dashboard "$QWEN_ENV" "$run_root" "$DASHBOARD_ROOT/E6_qwen35_${profile}_tiny_overfit_50.html"
 }
 
 job_e7() {
-  log "E7: Qwen3.5-4B base holdout eval"
+  local profile="$DEFAULT_REWARD_PROFILE"
+  local run_root="$RUNS_ROOT/E7_qwen35_4b_${profile}_base_holdout_8gen"
+  log "E7: Qwen3.5-4B base holdout eval, reward profile=$profile"
   run_in_conda_env "$QWEN_ENV" env \
     UNSLOTH_COMPILE_DISABLE=1 \
     CUDA_VISIBLE_DEVICES=0 \
     TEST_MODE=eval_base_holdout \
+    REWARD_PROFILE="$profile" \
     MODEL_NAME="$QWEN_MODEL" \
-    RUN_ROOT="$QWEN_BASE_HOLDOUT_ROOT" \
+    RUN_ROOT="$run_root" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
     FAST_INFERENCE=false \
@@ -226,18 +259,23 @@ job_e7() {
     NUM_GENERATIONS=4 \
     EVAL_NUM_GENERATIONS=8 \
     python train_conrad.py
-  make_dashboard "$QWEN_ENV" "$QWEN_BASE_HOLDOUT_ROOT" "$DASHBOARD_ROOT/E7_qwen35_4b_base_holdout_8gen.html"
+  make_dashboard "$QWEN_ENV" "$run_root" "$DASHBOARD_ROOT/E7_qwen35_4b_${profile}_base_holdout_8gen.html"
 }
 
 job_e8() {
-  log "E8: Qwen3.5-4B dual-GPU GRPO training"
+  local profile="${1:-$DEFAULT_REWARD_PROFILE}"
+  local train_root
+  train_root="$(qwen_train_root "$profile")"
+
+  log "E8: Qwen3.5-4B dual-GPU GRPO training, reward profile=$profile"
   run_in_conda_env "$QWEN_ENV" env \
     UNSLOTH_COMPILE_DISABLE=1 \
     CUDA_VISIBLE_DEVICES=0,1 \
     WORLD_SIZE=2 \
     TEST_MODE=train \
+    REWARD_PROFILE="$profile" \
     MODEL_NAME="$QWEN_MODEL" \
-    RUN_ROOT="$QWEN_TRAIN_ROOT" \
+    RUN_ROOT="$train_root" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
     FAST_INFERENCE=false \
@@ -253,24 +291,31 @@ job_e8() {
     NUM_GENERATIONS=4 \
     LEARNING_RATE=5e-6 \
     accelerate launch --num_processes 2 train_conrad.py
-  make_dashboard "$QWEN_ENV" "$QWEN_TRAIN_ROOT" "$DASHBOARD_ROOT/E8_qwen35_4b_dual3090_grpo.html"
+  make_dashboard "$QWEN_ENV" "$train_root" "$DASHBOARD_ROOT/E8_qwen35_4b_${profile}_dual3090_grpo.html"
 }
 
 job_e9() {
-  log "E9: Qwen3.5-4B trained LoRA holdout eval"
+  local profile="${1:-$DEFAULT_REWARD_PROFILE}"
+  local train_root
+  local eval_root
+  train_root="$(qwen_train_root "$profile")"
+  eval_root="$(qwen_lora_holdout_root "$profile")"
+
+  log "E9: Qwen3.5-4B trained LoRA holdout eval, reward profile=$profile"
   run_in_conda_env "$QWEN_ENV" env \
     UNSLOTH_COMPILE_DISABLE=1 \
     CUDA_VISIBLE_DEVICES=0 \
     TEST_MODE=eval_lora_holdout \
+    REWARD_PROFILE="$profile" \
     MODEL_NAME="$QWEN_MODEL" \
-    RUN_ROOT="$QWEN_LORA_HOLDOUT_ROOT" \
-    LORA_PATH="$QWEN_TRAIN_ROOT/lora" \
+    RUN_ROOT="$eval_root" \
+    LORA_PATH="$train_root/lora" \
     LOAD_IN_4BIT=false \
     LOAD_IN_16BIT=true \
     FAST_INFERENCE=false \
     EVAL_NUM_GENERATIONS=8 \
     python train_conrad.py
-  make_dashboard "$QWEN_ENV" "$QWEN_LORA_HOLDOUT_ROOT" "$DASHBOARD_ROOT/E9_qwen35_4b_lora_holdout_8gen.html"
+  make_dashboard "$QWEN_ENV" "$eval_root" "$DASHBOARD_ROOT/E9_qwen35_4b_${profile}_lora_holdout_8gen.html"
 }
 
 main() {
@@ -292,7 +337,8 @@ main() {
         return 0
         ;;
       LIST|--LIST)
-        printf '%s\n' E0 E1 E3 E4 E5 E6 E7 E8 E9
+        printf '%s\n' E0 E1 E3 E4 E5 E6 E7 E8 E9 \
+          E8-CORRECTNESS E9-CORRECTNESS E8-STYLE E9-STYLE E8-COMBINED E9-COMBINED
         return 0
         ;;
       ALL)
@@ -304,7 +350,14 @@ main() {
       QWEN|QWEN35)
         expanded_jobs+=(E5 E6 E7 E8 E9)
         ;;
-      E0|E1|E3|E4|E5|E6|E7|E8|E9)
+      REWARD-PROFILES|PROFILES)
+        expanded_jobs+=(
+          E8-CORRECTNESS E9-CORRECTNESS
+          E8-STYLE E9-STYLE
+          E8-COMBINED E9-COMBINED
+        )
+        ;;
+      E0|E1|E3|E4|E5|E6|E7|E8|E9|E8-CORRECTNESS|E9-CORRECTNESS|E8-STYLE|E9-STYLE|E8-COMBINED|E9-COMBINED)
         expanded_jobs+=("$normalized")
         ;;
       *)
@@ -326,6 +379,12 @@ main() {
       E7) job_e7 ;;
       E8) job_e8 ;;
       E9) job_e9 ;;
+      E8-CORRECTNESS) job_e8 correctness ;;
+      E9-CORRECTNESS) job_e9 correctness ;;
+      E8-STYLE) job_e8 style ;;
+      E9-STYLE) job_e9 style ;;
+      E8-COMBINED) job_e8 combined ;;
+      E9-COMBINED) job_e9 combined ;;
     esac
   done
 
