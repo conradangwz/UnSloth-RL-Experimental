@@ -1,0 +1,41 @@
+name: unsloth_style
+
+channels:
+  - conda-forge
+
+# Unsloth style-reward environment.
+# Create from scratch with:
+#   conda env remove -n unsloth_style -y
+#   conda env create -f envs/unsloth-style.yml
+#   conda activate unsloth_style
+#
+# The CUDA wheel source is an extra index because Conda installs the complete
+# pip section in one invocation. This keeps PyPI available for non-Torch
+# dependencies while allowing pip to install the CUDA 12.8 PyTorch wheels.
+
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+
+      # CUDA-enabled PyTorch stack.
+      - torch==2.10.0
+      - torchvision
+      - torchaudio
+
+      # Unsloth and compatible Transformers stack.
+      - unsloth==2026.5.10
+      - "transformers>=5.2.0,<=5.5.0"
+      - "fsspec[http]>=2023.1.0,<=2025.9.0"
+
+      # GRPO, datasets, style analysis, and dashboards.
+      - trl
+      - datasets
+      - peft
+      - accelerate
+      - bitsandbytes
+      - ruff
+      - pandas
+      - plotly
+      - safetensors

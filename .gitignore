@@ -5,6 +5,8 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .ipynb_checkpoints/
+.codex_pydeps/
+.codex_pydeps_plotly5/
 
 # Local env / secrets
 .env
